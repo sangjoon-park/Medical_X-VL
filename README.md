@@ -45,58 +45,21 @@ The open-source datasets used in paper can be obtained from following links.
 
 #### Dataset preparation
 * We follow the [MedViLL](https://github.com/SuperSupermoon/MedViLL) to preprocess and split the [MIMIC-CXR](https://physionet.org/content/mimic-cxr/2.0.0/) and [VQA-RAD](https://osf.io/89kps/) datasets. See this [link](https://github.com/SuperSupermoon/MedViLL) for details.
+* COVID-19 and normal data can be downloaded in [Brixia](https://brixia.github.io/) and [NIH](https://cloud.google.com/healthcare-api/docs/resources/public-datasets/nih-chest) databases.
 
-Other parts of the institutional data (CAU, CNUH) used in this study cannot be shared without the signed agreement as they may contain private information.
+Other parts of the institutional data used in this study are not publicly available due to the patient privacy obligation. Interested users can request the access to these data for research, by contacting the corresponding author J.C.Y. (jong.ye@kaist.ac.kr).
 
-
-
-<div align="center">
-  <img src="./assets/results.png">
-</div>
-
-For instance, you can use Shenzen tuberculosis data containing 327 normal and 335 tuberculosis CXRs as test data as above.
-
-### Data preprocessing
-After downloading all data, dicom (.dcm) files should first be converted to image (.png) files.
-```
->  python dcm_to_npy.py --dir PATH/DCM/ --save_dir PATH/SAVE/
-```
-Then, locate all normal data into a folder name containing *Normal* and all tuberculosis data into a folder name containing *Tuberculosis*.
-
-Next, locate all training data to a folder and test data to another folder, and execute data splitter. It automatically split training data into small labeled subsets (10%) and 3 folded unlabeled subsets, and save test data in another folder.
-```
->  python data_splitter.py --train_folder PATH/TRAIN/ --test_folder PATH/TEST/ --save_dir PATH/SAVE/
-```
-
-After successful preprocessing, your data will be located as below.
-
-```
---- save_dir
-     --- labeled (containing about 10% of training data)
-            --- xxx.png
-            --- ...
-     --- fold_0 (unlabeled fold containing about 30% of training data)
-            --- xxx.png
-            --- ...
-     --- fold_1 (unlabeled fold containing about 30% of training data)
-            --- xxx.png
-            --- ...
-     --- fold_2 (unlabeled fold containing about 30% of training data)
-            --- xxx.png
-            --- ...
-     --- test (containing validation data)
-            --- xxx.png
-            --- ...
-```
 
 ## Download pretrained weights
 You can download the pretrained weights on the CheXpert dataset in link below, which should be located as,
 
+* VLP model for Chest radiographs
 https://drive.google.com/file/d/16y3eJRYQCg-B8rg9eB3XRA-6PcfHCNmA/view?usp=sharing
 
-```
-./pretrained_weights/pretrain.ckpt
-```
+
+* VLP model for abdominal radiographs
+https://drive.google.com/file/d/16y3eJRYQCg-B8rg9eB3XRA-6PcfHCNmA/view?usp=sharing
+
 
 ## Training a model
 The pretrained Vision transformer (ViT-S8) weight is provided in *./pretrained_weights* folder.
