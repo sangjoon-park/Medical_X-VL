@@ -5,7 +5,7 @@
 ### Paper link: [https://github.com/sangjoon-park/Medical_X-VL](https://github.com/sangjoon-park/Medical_X-VL)
 
 <div align="center">
-  <img src="./assets/teaser.PNG">
+  <img src="./assets/teaser.png">
 </div>
 
 ### [Paper] | [Official Pytorch code](https://github.com/sangjoon-park/)
@@ -83,7 +83,7 @@ The attentions of Vision transformer model can be visualized with following code
 Successful visualization will provide attention maps as below.
 
 <div align="center">
-  <img src="./assets/attention.png">
+  <img src="./assets/fig_attention.png">
 </div>
 
 
