@@ -54,11 +54,11 @@ Other parts of the institutional data used in this study are not publicly availa
 You can download the pretrained weights on the CheXpert dataset in link below, which should be located as,
 
 * VLP model for Chest radiographs
-https://drive.google.com/file/d/16y3eJRYQCg-B8rg9eB3XRA-6PcfHCNmA/view?usp=sharing
+# https://drive.google.com/file/d/16y3eJRYQCg-B8rg9eB3XRA-6PcfHCNmA/view?usp=sharing
 
 
 * VLP model for abdominal radiographs
-https://drive.google.com/file/d/16y3eJRYQCg-B8rg9eB3XRA-6PcfHCNmA/view?usp=sharing
+# https://drive.google.com/file/d/16y3eJRYQCg-B8rg9eB3XRA-6PcfHCNmA/view?usp=sharing
 
 
 ## Training a model
