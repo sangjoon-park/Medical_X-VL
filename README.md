@@ -5,7 +5,7 @@
 ### Paper link: [https://github.com/sangjoon-park/Medical_X-VL](https://github.com/sangjoon-park/Medical_X-VL)
 
 <div align="center">
-  <img src="./assets/teaser.PNG">
+  <img src="./assets/teaser.png">
 </div>
 
 ### [Paper] | [Official Pytorch code](https://github.com/sangjoon-park/)
@@ -63,27 +63,22 @@ https://drive.google.com/file/d/16y3eJRYQCg-B8rg9eB3XRA-6PcfHCNmA/view?usp=shari
 https://drive.google.com/file/d/16y3eJRYQCg-B8rg9eB3XRA-6PcfHCNmA/view?usp=sharing
 
 
-## Training a model
+## Training the model
+### Vision-Language Pre-training
 First, download ImageNet-pretrained weights for the visual encoder from this [link](https://github.com/bytedance/ibot). We utilized pre-trained ViT-S/16 model as the visual encoder.
 
 
-
-```
-## Evaluating a model
+### Image-Report retrieval
 You can evaluate the model performance (AUC) with the following code.
-```
-> python eval_finetune.py --name EXP_NAME --pretrained_dir /PATH/FOLD3/checkpoint.pth --data_path /PATH/DATA/ --checkpoint_key student
-```
 
-## Visualizing attention
-The attentions of Vision transformer model can be visualized with following code.
-```
-> python visualize_attention.py --pretrained_weights /PATH/FOLD3/checkpint.pth --image_dir /PATH/DATA/ --checkpoint_key student
-```
-Successful visualization will provide attention maps as below.
+### Report generation
+
+### Vision-Question Answering (VQA)
+
+### Attention visualization
 
 <div align="center">
-  <img src="./assets/attention.png">
+  <img src="./assets/fig_attention.png">
 </div>
 
 
