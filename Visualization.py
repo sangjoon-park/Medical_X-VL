@@ -107,9 +107,6 @@ def getAttMap(img, attMap, blur = True, overlap = True):
         attMap = 1*(1-attMap**0.7).reshape(attMap.shape + (1,))*img + (attMap**0.7).reshape(attMap.shape+(1,)) * attMapV
     return attMap
 
-
-# normalize = transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
-
 transform = transforms.Compose([
     transforms.Resize((224,224),interpolation=Image.BICUBIC),
     GaussianBlur(1.0, radius_min=0.5, radius_max=0.5),
@@ -149,7 +146,7 @@ _, _, test_loader = create_loader([train_dataset, val_dataset, test_dataset], sa
                                                       is_trains=[True, False, False],
                                                       collate_fns=[None, None, None])
 
-# set index 0 - 19
+# Set index 0 - 19
 index = 16
 
 for i, (images, img_ids, labels, captions) in enumerate(test_loader):
