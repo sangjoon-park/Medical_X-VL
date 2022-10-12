@@ -13,7 +13,7 @@
 
 > **Medical X-VL: Medical Domain X-attention Vision-Language model**<br>
 >
-> *Medical X-VL is a vision-language pre-training model developed to be tailored for the intrinsic properties of the medical domain data. For demo, we provide python codes where you can pre-train, fine-tune, evaluate and visualize the cross-attention between the words and visual semantics.*
+> *Medical X-VL is a vision-language pre-training model developed to be tailored for the intrinsic properties of the medical domain data. For demo, we provide python codes where you can vision-language pretrain, fine-tune and evaluate for each task, visualize the cross-attention between the words and visual semantics.*
 
 ## System requirements
 ### General requirements
@@ -67,15 +67,24 @@ https://drive.google.com/file/d/16y3eJRYQCg-B8rg9eB3XRA-6PcfHCNmA/view?usp=shari
 ### Vision-Language Pre-training
 First, download ImageNet-pretrained weights for the visual encoder from this [link](https://github.com/bytedance/ibot). We utilized pre-trained ViT-S/16 model as the visual encoder.
 
-
 ### Image-Report retrieval
-You can evaluate the model performance (AUC) with the following code.
+Our model support zero-shot retrieval for image-to-text and text-to-image retrieval without any fine-tuning step.
 
-### Report generation
+### Report Generation
+From the VLP weights, the model can be fine-tuned for the report generation task as below.
+
+After fine-tuning, inference can be done as below.
 
 ### Vision-Question Answering (VQA)
+From the VLP weights, the model can be fine-tuned for the VQA task as below.
 
-### Attention visualization
+After fine-tuning, inference can be done as below.
+
+### Error Detection
+Human error (patient mismatch, orientation confusion) can be detected without any fine-tuning step, as the model is already trained to correlate the image and report in the pre-training stage.
+
+### Visualization
+Succesful visualization will show the cross-attention between the words and the visual semantics (image patches) as below.
 
 <div align="center">
   <img src="./assets/fig_attention.png">
