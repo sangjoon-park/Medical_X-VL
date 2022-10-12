@@ -17,7 +17,7 @@ import torch.backends.cudnn as cudnn
 import torch.distributed as dist
 from torch.utils.data import DataLoader
 
-from models.model_retrieval import ALBEF
+from models.model_retrieval import XVLModel
 from models.vit import interpolate_pos_embed
 from models.tokenization_bert import BertTokenizer
 from transformers import AutoTokenizer
@@ -165,7 +165,7 @@ def main(args, config):
 
     #### Model ####
     print("Creating model")
-    model = ALBEF(train_loader, config=config, text_encoder=args.text_encoder, tokenizer=tokenizer)
+    model = XVLModel(train_loader, config=config, tokenizer=tokenizer)
 
     if args.checkpoint:
         checkpoint = torch.load(args.checkpoint, map_location='cpu')
@@ -219,11 +219,8 @@ def main(args, config):
             train_stats = train(model, train_loader, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler,
                                 config)
 
-        # val_labels, val_scores = evaluation(model_without_ddp, val_loader, tokenizer, device, config)
         test_labels, test_scores = evaluation(model_without_ddp, test_loader, tokenizer, device, config)
 
-        # AUC 가지고 계산하기 [Progression도 같은 요령으로?]
-        # val_auc = roc_auc_score(y_true=val_labels, y_score=val_scores)
         test_auc = roc_auc_score(y_true=test_labels, y_score=test_scores)
         print(1 - test_auc)
 

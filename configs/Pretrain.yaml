@@ -1,23 +1,10 @@
-#train_file: [  '../data/json_pretrain/coco.json',
-#               '../data/json_pretrain/vg.json',
-#               #'../data/json_pretrain/cc12m.json',
-#               '../data/json_pretrain/cc3m_train.json',
-#               '../data/json_pretrain/cc3m_val.json',
-#               '../data/json_pretrain/sbu.json'
-#               ]
-# generalized options
-
 dataset: 'mimic'
-task: 'generation'
 
 train_file: [
             '/home/depecher/PycharmProjects/TCL_local/data/mimic/Train.jsonl'
             ]
 val_file: '/home/depecher/PycharmProjects/TCL_local/data/mimic/Valid.jsonl'
 test_file: '/home/depecher/PycharmProjects/TCL_local/data/mimic/Test.jsonl'
-
-rsna_train: '/4TB_hdd/vision_language/rsna/train/'
-rsna_test: '/4TB_hdd/vision_language/rsna/test/'
 
 # each train_file (json) contains a python list where each item is {'image': img_path, 'caption': text or list_of_text }               
 bert_config: 'configs/config_bert.json'

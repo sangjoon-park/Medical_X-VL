@@ -70,7 +70,7 @@ class XVLModel(nn.Module):
                              shared_head=config['shared_head'],
                              )
 
-        state_dict = torch.load('/4TB_hdd/downloads/small_checkpoint.pth')['student']
+        state_dict = torch.load('/COVID_8TB/sangjoon/vision_language/checkpoint/small_checkpoint.pth')['student']
         pos_embed_reshaped = interpolate_pos_embed(state_dict['module.backbone.pos_embed'],
                                                    self.visual_encoder.backbone)
         state_dict['module.backbone.pos_embed'] = pos_embed_reshaped

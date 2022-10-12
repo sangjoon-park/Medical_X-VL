@@ -6,6 +6,7 @@ image_root: None
 bert_config: 'configs/config_bert.json'
 
 mode: 'orientation_error'
+#mode: 'patient_mismatch'
 
 image_res: 224
 batch_size_train: 16

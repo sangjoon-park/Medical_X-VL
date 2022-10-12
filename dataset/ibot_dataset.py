@@ -846,7 +846,6 @@ class Det_train_ImageFolder(Dataset):
             subject = self.train_df.iloc[sub_idx]
             captions = subject['caption'].split('.')
             label = subject['label']
-            # captions = [subject['caption']]
             total_captions = []
             for caption in captions:
                 if len(caption) < 3:

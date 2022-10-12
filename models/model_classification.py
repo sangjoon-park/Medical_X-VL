@@ -9,7 +9,7 @@ import numpy as np
 from fuzzywuzzy import fuzz
 
 
-class ALBEF(nn.Module):
+class XVLModel(nn.Module):
     def __init__(self,
                  train_loader,
                  text_encoder=None,
@@ -41,11 +41,6 @@ class ALBEF(nn.Module):
         self.vision_proj = nn.Linear(vision_width, embed_dim)
         self.text_proj = nn.Linear(text_width, embed_dim)
 
-        # config_decoder = BertConfig.from_json_file(config['bert_config'])
-        # if not config['fusion']:
-        #     config_decoder.fusion_layer = 12
-        # self.vision_decoder = BertModel(config=config_decoder)
-
         self.temp = nn.Parameter(torch.ones([]) * config['temp'])
         self.queue_size = config['queue_size']
         self.momentum = config['momentum']
@@ -57,27 +52,6 @@ class ALBEF(nn.Module):
             return_all_tokens=True,
         )
         self.visual_encoder_m = visual_encoder_m
-
-        # checkpoint = torch.hub.load_state_dict_from_url(
-        #     url="https://dl.fbaipublicfiles.com/deit/deit_small_patch16_224-cd65a155.pth",
-        #     map_location="cpu", check_hash=True)
-        # state_dict = checkpoint["model"]
-        # pos_embed_reshaped = interpolate_pos_embed(state_dict['pos_embed'], self.visual_encoder)
-        # state_dict['pos_embed'] = pos_embed_reshaped
-        # msg = self.visual_encoder.load_state_dict(state_dict, strict=False)
-        # print(msg)
-
-        # state_dict = torch.load('/COVID_8TB/sangjoon/vision_language/checkpoint/small_checkpoint.pth')['student']
-        # pos_embed_reshaped = interpolate_pos_embed(state_dict['module.backbone.pos_embed'],
-        #                                            self.visual_encoder)
-        # state_dict['module.backbone.pos_embed'] = pos_embed_reshaped
-        # state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
-        # state_dict = {k.replace("last_layer", ""): v for k, v in state_dict.items()}
-        # state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
-        # msg = self.visual_encoder.load_state_dict(state_dict, strict=False)
-        # msg2 = self.visual_encoder_m.load_state_dict(state_dict, strict=False)
-        # print(msg)
-        # print(msg2)
 
         self.vision_proj_m = nn.Linear(vision_width, embed_dim)
         self.text_encoder_m = BertModel(config=bert_config, add_pooling_layer=False)
@@ -109,48 +83,14 @@ class ALBEF(nn.Module):
 
         self.config = config
 
-        # # freeze vision weights
-        # for param in self.visual_encoder.parameters():
-        #     param.requires_grad = False
-        # for param in self.text_encoder.parameters():
-        #     param.requires_grad = False
-        #
-        # # freeze language weights
-        # for name, param in self.text_encoder.named_parameters():
-        #     if 'layer' in name:
-        #         encoder_keys = name.split('.')
-        #         layer_num = int(encoder_keys[2])
-        #         if layer_num < 6:
-        #             param.requires_grad = False
-
     def forward(self, image, label, mode='train'):
         bs = image.size(0)
 
-        # with torch.no_grad():
-        #     image_embeds_m_raw = self.visual_encoder_m.get_intermediate_layers(image, 1)[0]
         image_embeds_raw = self.visual_encoder.get_intermediate_layers(image, 1)[0]
 
         image_embeds = image_embeds_raw
         image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
 
-        # text_output = self.text_encoder(text.input_ids, attention_mask=text.attention_mask,
-        #                                 return_dict=True, mode='text')
-        # text_embeds = text_output.last_hidden_state
-
-        ###=================================###
-        # if self.config['fusion']:
-        #     # fusion image encoder
-        #     vl_embeddings = self.vision_decoder(encoder_embeds=image_embeds,
-        #                                         attention_mask=image_atts,
-        #                                         encoder_hidden_states=text_embeds,
-        #                                         encoder_attention_mask=text.attention_mask,
-        #                                         return_dict=True,
-        #                                         mode='fusion').last_hidden_state[:, 0, :]
-        # else:
-        # vl_embeddings = self.text_encoder(encoder_embeds=image_embeds,
-        #                                         attention_mask=image_atts,
-        #                                         return_dict=True,
-        #                                         mode='fusion').last_hidden_state[:, 0, :]
         vl_embeddings = image_embeds[:,0,:]
 
         losses = 0.

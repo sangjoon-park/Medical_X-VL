@@ -17,7 +17,7 @@ import torch.backends.cudnn as cudnn
 import torch.distributed as dist
 from torch.utils.data import DataLoader
 
-from models.model_retrieval import ALBEF
+from models.model_retrieval import XVLModel
 from models.vit import interpolate_pos_embed
 from models.tokenization_bert import BertTokenizer
 from transformers import AutoTokenizer
@@ -97,9 +97,6 @@ def evaluation(model, data_loader, tokenizer, device, config):
         image_embed = model.vision_proj(image_feat[:, 0, :])
         image_embed = F.normalize(image_embed, dim=-1)
 
-        # image_feats.append(image_feat)
-        # image_embeds.append(image_embed)
-
         image_feats = image_feat
         image_embeds = image_embed
 
@@ -132,18 +129,18 @@ def evaluation(model, data_loader, tokenizer, device, config):
             encoder_att = torch.ones(encoder_output.size()[:-1], dtype=torch.long).to(device)
             with torch.no_grad():
                 output_t = model.text_encoder(encoder_embeds=text_feats[topk_idx],
-                                                attention_mask=text_atts[topk_idx],
-                                                encoder_hidden_states=encoder_output,
-                                                encoder_attention_mask=encoder_att,
-                                                return_dict=True,
-                                                mode='fusion'
-                                                )
+                                              attention_mask=text_atts[topk_idx],
+                                              encoder_hidden_states=encoder_output,
+                                              encoder_attention_mask=encoder_att,
+                                              return_dict=True,
+                                              mode='fusion'
+                                              )
                 output_v = model.text_encoder(encoder_embeds=encoder_output,
-                                                  attention_mask=encoder_att,
-                                                  encoder_hidden_states=text_feats[topk_idx],
-                                                  encoder_attention_mask=text_atts[topk_idx],
-                                                  return_dict=True,
-                                                  mode='fusion')
+                                              attention_mask=encoder_att,
+                                              encoder_hidden_states=text_feats[topk_idx],
+                                              encoder_attention_mask=text_atts[topk_idx],
+                                              return_dict=True,
+                                              mode='fusion')
 
             score_t = model.itm_head_t(output_t.last_hidden_state[:, 0, :])[:, 1]
             score_v = model.itm_head_v(output_v.last_hidden_state[:, 0, :])[:, 1]
@@ -163,20 +160,20 @@ def evaluation(model, data_loader, tokenizer, device, config):
             encoder_att = torch.ones(encoder_output.size()[:-1], dtype=torch.long).to(device)
             with torch.no_grad():
                 output_t = model.text_encoder(encoder_embeds=text_feats[start + i].repeat(config['k_test'], 1, 1),
-                                                attention_mask=text_atts[start + i].repeat(config['k_test'], 1),
-                                                encoder_hidden_states=encoder_output,
-                                                encoder_attention_mask=encoder_att,
-                                                return_dict=True,
-                                                mode='fusion'
-                                                )
+                                              attention_mask=text_atts[start + i].repeat(config['k_test'], 1),
+                                              encoder_hidden_states=encoder_output,
+                                              encoder_attention_mask=encoder_att,
+                                              return_dict=True,
+                                              mode='fusion'
+                                              )
                 output_v = model.text_encoder(encoder_embeds=encoder_output,
-                                                  attention_mask=encoder_att,
-                                                  encoder_hidden_states=text_feats[start + i].repeat(config['k_test'],
-                                                                                                     1, 1),
-                                                  encoder_attention_mask=text_atts[start + i].repeat(config['k_test'],
-                                                                                                     1),
-                                                  return_dict=True,
-                                                  mode='fusion')
+                                              attention_mask=encoder_att,
+                                              encoder_hidden_states=text_feats[start + i].repeat(config['k_test'],
+                                                                                                 1, 1),
+                                              encoder_attention_mask=text_atts[start + i].repeat(config['k_test'],
+                                                                                                 1),
+                                              return_dict=True,
+                                              mode='fusion')
 
             score_t = model.itm_head_t(output_t.last_hidden_state[:, 0, :])[:, 1]
             score_v = model.itm_head_v(output_v.last_hidden_state[:, 0, :])[:, 1]
@@ -210,80 +207,6 @@ def evaluation(model, data_loader, tokenizer, device, config):
         img_r5s.append(img_r5)
         txt_r10s.append(txt_r10)
         img_r10s.append(img_r10)
-
-        # eval_result = {'txt_r1': tr1,
-        #                'txt_r5': tr5,
-        #                'txt_r10': tr10,
-        #                'txt_r_mean': tr_mean,
-        #                'img_r1': ir1,
-        #                'img_r5': ir5,
-        #                'img_r10': ir10,
-        #                'img_r_mean': ir_mean,
-        #                'r_mean': r_mean}
-
-    # image_feats = torch.cat(image_feats, dim=0)
-    # image_embeds = torch.cat(image_embeds, dim=0)
-
-    # how much image to evaluate
-    # eval_len = 100
-    # text_feats = text_feats[:eval_len]
-    # text_embeds = text_embeds[:eval_len]
-    # image_feats = image_feats[:eval_len]
-    # image_embeds = image_embeds[:eval_len]
-
-    # sims_matrix = image_embeds @ text_embeds.t()
-    # score_matrix_i2t = torch.full((len(data_loader.dataset.image), len(texts)), -100.0).to(device)
-    #
-    # num_tasks = utils.get_world_size()
-    # rank = utils.get_rank()
-    # step = sims_matrix.size(0) // num_tasks + 1
-    # start = rank * step
-    # end = min(sims_matrix.size(0), start + step)
-    #
-    # for i, sims in enumerate(metric_logger.log_every(sims_matrix[start:end], 50, header)):
-    #     topk_sim, topk_idx = sims.topk(k=config['k_test'], dim=0)
-    #
-    #     encoder_output = image_feats[start + i].repeat(config['k_test'], 1, 1)
-    #     encoder_att = torch.ones(encoder_output.size()[:-1], dtype=torch.long).to(device)
-    #     output = model.text_encoder(encoder_embeds=text_feats[topk_idx],
-    #                                 attention_mask=text_atts[topk_idx],
-    #                                 encoder_hidden_states=encoder_output,
-    #                                 encoder_attention_mask=encoder_att,
-    #                                 return_dict=True,
-    #                                 mode='fusion'
-    #                                 )
-    #     score = model.itm_head(output.last_hidden_state[:, 0, :])[:, 1]
-    #     score_matrix_i2t[start + i, topk_idx] = score
-    #
-    # sims_matrix = sims_matrix.t()
-    # score_matrix_t2i = torch.full((len(texts), len(data_loader.dataset.image)), -100.0).to(device)
-    #
-    # step = sims_matrix.size(0) // num_tasks + 1
-    # start = rank * step
-    # end = min(sims_matrix.size(0), start + step)
-    #
-    # for i, sims in enumerate(metric_logger.log_every(sims_matrix[start:end], 50, header)):
-    #     topk_sim, topk_idx = sims.topk(k=config['k_test'], dim=0)
-    #     encoder_output = image_feats[topk_idx]
-    #     encoder_att = torch.ones(encoder_output.size()[:-1], dtype=torch.long).to(device)
-    #     output = model.text_encoder(encoder_embeds=text_feats[start + i].repeat(config['k_test'], 1, 1),
-    #                                 attention_mask=text_atts[start + i].repeat(config['k_test'], 1),
-    #                                 encoder_hidden_states=encoder_output,
-    #                                 encoder_attention_mask=encoder_att,
-    #                                 return_dict=True,
-    #                                 mode='fusion'
-    #                                 )
-    #     score = model.itm_head(output.last_hidden_state[:, 0, :])[:, 1]
-    #     score_matrix_t2i[start + i, topk_idx] = score
-    #
-    # if args.distributed:
-    #     dist.barrier()
-    #     torch.distributed.all_reduce(score_matrix_i2t, op=torch.distributed.ReduceOp.SUM)
-    #     torch.distributed.all_reduce(score_matrix_t2i, op=torch.distributed.ReduceOp.SUM)
-    #
-    # total_time = time.time() - start_time
-    # total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-    # print('Evaluation time {}'.format(total_time_str))
 
     txt_r1s = np.array(txt_r1s).mean()  # i2t
     img_r1s = np.array(img_r1s).mean()  # t2i
@@ -321,12 +244,6 @@ def itm_eval(scores_i2t, scores_t2i, txt2img, img2txt, labels):
             rank = tmp
         ranks[index] = rank
 
-        # for i in img2txt[index]:
-        #     tmp = np.where(positives == 1)[0]
-        #     if tmp < rank:
-        #         rank = tmp
-        # ranks[index] = rank
-
     # Compute metrics
     tr1 = 100.0 * len(np.where(ranks < 1)[0]) / len(ranks)
     tr5 = 100.0 * len(np.where(ranks < 5)[0]) / len(ranks)
@@ -356,8 +273,6 @@ def itm_eval(scores_i2t, scores_t2i, txt2img, img2txt, labels):
             rank = tmp
         ranks[index] = rank
 
-        # ranks[index] = np.where(inds == txt2img[index])[0][0]
-
     # Compute metrics
     ir1 = 100.0 * len(np.where(ranks < 1)[0]) / len(ranks)
     ir5 = 100.0 * len(np.where(ranks < 5)[0]) / len(ranks)
@@ -383,8 +298,6 @@ def main(args, config):
     utils.init_distributed_mode(args)
 
     device = torch.device(args.device)
-    
-    seeds = [args.seed+0, args.seed+10, args.seed+20, args.seed+30, args.seed+40, args.seed+50, args.seed+60, args.seed+70, args.seed+80, args.seed+90]
 
     val_txt_r1t = []
     val_img_r1t = []
@@ -399,45 +312,40 @@ def main(args, config):
     test_img_r5t = []
     test_txt_r10t = []
     test_img_r10t = []
-    
+
     for j in range(10):
 
-        # fix the seed for reproducibility
-        seed = seeds[j] + utils.get_rank()
-        torch.manual_seed(seed)
-        np.random.seed(seed)
-        random.seed(seed)
         cudnn.benchmark = True
-    
+
         #### Dataset ####
         print("Creating retrieval dataset")
         train_dataset, val_dataset, test_dataset = create_dataset('re', config)
-    
+
         if args.distributed:
             num_tasks = utils.get_world_size()
             global_rank = utils.get_rank()
             samplers = create_sampler([train_dataset], [True], num_tasks, global_rank) + [None, None]
         else:
             samplers = [None, None, None]
-    
+
         train_loader, val_loader, test_loader = create_loader([train_dataset, val_dataset, test_dataset], samplers,
                                                               batch_size=[config['batch_size_train']] + [
                                                                   config['batch_size_test']] * 2,
                                                               num_workers=[4, 4, 4],
                                                               is_trains=[True, False, False],
                                                               collate_fns=[None, None, None])
-    
+
         # tokenizer = BertTokenizer.from_pretrained(args.text_encoder)
         tokenizer = AutoTokenizer.from_pretrained("./my_tokenizer/")
-    
+
         #### Model ####
         print("Creating model")
-        model = ALBEF(train_loader, config=config, tokenizer=tokenizer)
-    
+        model = XVLModel(train_loader, config=config, tokenizer=tokenizer)
+
         if args.checkpoint:
             checkpoint = torch.load(args.checkpoint, map_location='cpu')
             state_dict = checkpoint['model']
-    
+
             # reshape positional embedding to accomodate for image resolution change
             pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder.backbone.pos_embed'],
                                                        model.visual_encoder)
@@ -446,53 +354,55 @@ def main(args, config):
                                                          model.visual_encoder_m)
             state_dict['visual_encoder_m.backbone.pos_embed'] = m_pos_embed_reshaped
             state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
-    
+
             for key in list(state_dict.keys()):
                 if 'bert' in key:
                     encoder_key = key.replace('bert.', '')
                     state_dict[encoder_key] = state_dict[key]
                     del state_dict[key]
             msg = model.load_state_dict(state_dict, strict=False)
-    
+
             print('load checkpoint from %s' % args.checkpoint)
             print(msg)
-    
+
         model = model.to(device)
-    
+
         model.copy_params()
         print('model parameters are copied.')
-    
+
         model_without_ddp = model
         if args.distributed:
             model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
             model_without_ddp = model.module
-    
+
         arg_opt = utils.AttrDict(config['optimizer'])
         optimizer = create_optimizer(arg_opt, model)
         arg_sche = utils.AttrDict(config['schedular'])
         lr_scheduler, _ = create_scheduler(arg_sche, optimizer)
-    
+
         max_epoch = config['schedular']['epochs']
         warmup_steps = config['schedular']['warmup_epochs']
         best = 0
         best_epoch = 0
-    
-        print("Start training")
+
+        print("Image-to-text and Text-to-image retrieval")
         start_time = time.time()
         for epoch in range(0, max_epoch):
             if not args.evaluate:
                 if args.distributed:
                     train_loader.sampler.set_epoch(epoch)
-                train_stats = train(model, train_loader, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler,
+                train_stats = train(model, train_loader, optimizer, tokenizer, epoch, warmup_steps, device,
+                                    lr_scheduler,
                                     config)
-    
+
             val_txt_r1, val_img_r1, val_txt_r5, val_img_r5, val_txt_r10, val_img_r10 = evaluation(model_without_ddp,
                                                                                                   val_loader, tokenizer,
                                                                                                   device, config)
-            test_txt_r1, test_img_r1, test_txt_r5, test_img_r5, test_txt_r10, test_img_r10 = evaluation(model_without_ddp,
-                                                                                                        test_loader,
-                                                                                                        tokenizer, device,
-                                                                                                        config)
+            test_txt_r1, test_img_r1, test_txt_r5, test_img_r5, test_txt_r10, test_img_r10 = evaluation(
+                model_without_ddp,
+                test_loader,
+                tokenizer, device,
+                config)
 
             val_txt_r1t.append(val_txt_r1)
             val_img_r1t.append(val_img_r1)
@@ -507,18 +417,9 @@ def main(args, config):
             test_img_r5t.append(test_img_r5)
             test_txt_r10t.append(test_txt_r10)
             test_img_r10t.append(test_img_r10)
-            
-            # print('val i2t_R1: %.3f, val t2i_R1: %.3f' % (val_txt_r1, val_img_r1))
-            # print('test i2t_R1: %.3f, test t2i_R1: %.3f' % (test_txt_r1, test_img_r1))
-            # print('-------------------------------------------')
-            # print('val i2t_R5: %.3f, val t2i_R5: %.3f' % (val_txt_r5, val_img_r5))
-            # print('test i2t_R5: %.3f, test t2i_R5: %.3f' % (test_txt_r5, test_img_r5))
-            # print('-------------------------------------------')
-            # print('val i2t_R10: %.3f, val t2i_R10: %.3f' % (val_txt_r10, val_img_r10))
-            # print('test i2t_R10: %.3f, test t2i_R10: %.3f' % (test_txt_r10, test_img_r10))
-    
+
             val_r5 = (val_txt_r5 + val_img_r5) / 2.
-    
+
             if utils.is_main_process():
                 if val_r5 > best:
                     save_obj = {
@@ -531,10 +432,10 @@ def main(args, config):
                     torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_best.pth'))
                     best = val_r5
                     best_epoch = epoch
-    
+
             if args.evaluate:
                 break
-    
+
             lr_scheduler.step(epoch + warmup_steps + 1)
             dist.barrier()
             torch.cuda.empty_cache()
@@ -573,8 +474,8 @@ def main(args, config):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', default='./configs/Retrieval.yaml')
-    parser.add_argument('--output_dir', default='output/Retrieval')
+    parser.add_argument('--config', default='./configs/Retrieval_flickr.yaml')
+    parser.add_argument('--output_dir', default='output/Retrieval_flickr')
     parser.add_argument('--checkpoint', default='')
     parser.add_argument('--text_encoder', default='bert-base-uncased')
     parser.add_argument('--evaluate', action='store_true')

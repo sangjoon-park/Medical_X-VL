@@ -4,8 +4,6 @@ from torchvision import transforms
 from PIL import Image
 
 from dataset.caption_dataset import re_train_dataset, re_eval_dataset, pretrain_dataset
-from dataset.nlvr_dataset import nlvr_dataset
-from dataset.ve_dataset import ve_dataset
 from dataset.vqa_dataset import vqa_dataset
 from dataset.grounding_dataset import grounding_dataset
 

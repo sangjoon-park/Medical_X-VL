@@ -16,7 +16,7 @@ import torch.backends.cudnn as cudnn
 import torch.distributed as dist
 from torch.utils.data import DataLoader
 
-from models.model_classification import ALBEF
+from models.model_classification import XVLModel
 from models.vit import interpolate_pos_embed
 from models.tokenization_bert import BertTokenizer
 
@@ -67,10 +67,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
 @torch.no_grad()
 def evaluation(model, data_loader, tokenizer, device, config, n):
     # test
-    model.eval() 
-    
-    metric_logger = utils.MetricLogger(delimiter="  ")
-    header = 'Evaluation:'    
+    model.eval()
     
     print('Computing features for evaluation...')
     start_time = time.time()
@@ -157,45 +154,12 @@ def main(args, config):
 
     #### Model #### 
     print("Creating model")
-    model = ALBEF(train_loader, config=config, text_encoder=args.text_encoder, tokenizer=tokenizer)
+    model = XVLModel(train_loader, config=config, text_encoder=args.text_encoder, tokenizer=tokenizer)
     
     if args.checkpoint:
         checkpoint = torch.load(args.checkpoint, map_location='cpu')
-
-
-
-        state_dict = checkpoint
-        # state_dict = checkpoint['student']
-        # state_dict = checkpoint['model']
-        state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
-        state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
-        state_dict = {k.replace("encoder.", ""): v for k, v in state_dict.items()}
-        msg = model.visual_encoder.load_state_dict(state_dict, strict=False)
-
-
-
-        # # Reshape positional embedding to accomodate for image resolution change
-        # state_dict = checkpoint['model']
-        # pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder.backbone.pos_embed'],
-        #                                            model.visual_encoder)
-        # state_dict['visual_encoder.backbone.pos_embed'] = pos_embed_reshaped
-        # m_pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder_m.backbone.pos_embed'],
-        #                                              model.visual_encoder_m)
-        # state_dict['visual_encoder_m.backbone.pos_embed'] = m_pos_embed_reshaped
-        # state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
-        #
-        # for key in list(state_dict.keys()):
-        #     if 'bert' in key:
-        #         encoder_key = key.replace('bert.', '')
-        #         state_dict[encoder_key] = state_dict[key]
-        #         del state_dict[key]
-        # msg = model.load_state_dict(state_dict, strict=False)
-
-
-
-
-
-        print('load checkpoint from %s'%args.checkpoint)
+        state_dict = checkpoint['model']
+        msg = model.load_state_dict(state_dict, strict=False)
         print(msg)
 
     model = model.to(device)
@@ -228,7 +192,6 @@ def main(args, config):
 
         val_aucs = evaluation(model, val_loader, tokenizer, device, config, n)
         mean_aucs = np.array(val_aucs).mean()
-        # test_aucs = evaluation(model, test_loader, tokenizer, device, config, n)
 
         save_obj = {
             'model': model_without_ddp.state_dict(),

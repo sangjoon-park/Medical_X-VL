@@ -1,26 +1,14 @@
 # Data MIMIC or RSNA
 dataset: 'mimic'
+task: 'generation'
 
 train_file: ['/home/depecher/PycharmProjects/TCL_local/data/mimic/Train.jsonl']
-
 test_file: ['/home/depecher/PycharmProjects/TCL_local/data/mimic/Test.jsonl']
-answer_list: '/4TB_hdd/downloads/data_RAD/home/mimic-cxr/dataset/data_RAD/cache/test_target.pkl'
-
-rsna_train: '/4TB_hdd/covid_data/v7_210129_PA_AP/'
-rsna_test: '/4TB_hdd/covid_data/v7_210129_PA_AP/'
-#rsna_train: '/4TB_hdd/vision_language/JSRT/test/'
-#rsna_test: '/4TB_hdd/vision_language/JSRT/test/'
-
-rsna_train_gen: './JSRT_train.json'
-rsna_val_gen: './JSRT_test.json'
-rsna_test_gen: './JSRT_test.json'
-
-vqa_root: '../data/VQA/Images/mscoco/' #train2014/
-vg_root: '../data/VG/VG_100K/'  #image/
 
 vision_width: 384
 embed_dim: 256
 queue_size: 49152
+mlm_probability: 0.15
 
 search: 'greedy'
 

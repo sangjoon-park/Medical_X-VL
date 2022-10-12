@@ -69,10 +69,9 @@ class XVLModel(nn.Module):
                              norm_last_layer=config['norm_last_layer'],
                              shared_head=config['shared_head'],
                              )
-        # state_dict = torch.hub.load('facebookresearch/dino:main', 'dino_vitb16').state_dict()
 
         # TODO load iBot weights
-        state_dict = torch.load('/4TB_hdd/downloads/small_checkpoint.pth')['student']
+        state_dict = torch.load('/COVID_8TB/sangjoon/vision_language/checkpoint/small_checkpoint.pth')['student']
         pos_embed_reshaped = interpolate_pos_embed(state_dict['module.backbone.pos_embed'],
                                                    self.visual_encoder.backbone)
         state_dict['module.backbone.pos_embed'] = pos_embed_reshaped
@@ -115,22 +114,14 @@ class XVLModel(nn.Module):
         msg = self.visual_encoder_m.load_state_dict(state_dict, strict=False)
         print(msg)
 
-        # for p in self.visual_encoder_m.parameters():
-        #     p.requires_grad = False
-
         self.vision_proj_m = nn.Linear(vision_width, embed_dim)
 
         self.text_encoder_m = BertLMHeadModel(config=bert_config)
         self.text_proj_m = nn.Linear(text_width, embed_dim)
 
-        # config_decoder = BertConfig.from_json_file(config['bert_config'])
-        # self.vision_decoder = BertModel(config=config_decoder)
-        # self.vision_decoder_m = BertModel(config=config_decoder)
-
         self.model_pairs = [
             [self.vision_proj, self.vision_proj_m],
             [self.text_encoder, self.text_encoder_m],
-            # [self.vision_decoder, self.vision_decoder_m],
             [self.text_proj, self.text_proj_m],
             [self.head, self.head_m],
         ]
@@ -506,6 +497,261 @@ class XVLModel(nn.Module):
 
         return loss
 
+
+class XVLModel_infer(nn.Module):
+    def __init__(self,
+                 text_encoder=None,
+                 tokenizer=None,
+                 config=None,
+                 ):
+        super().__init__()
+
+        self.tokenizer = tokenizer
+        self.distill = config['distill']
+
+        visual_encoder = vit_small(
+            img_size=(config['image_res'], config['image_res']),
+            patch_size=config['patch_size'],
+            drop_path_rate=config['drop_path'],
+            return_all_tokens=True,
+        )
+        vision_width = config['vision_width']
+        embed_dim = config['embed_dim']
+
+        self.visual_encoder = visual_encoder
+
+        config_encoder = BertConfig.from_json_file(config['bert_config'])
+        self.text_encoder = BertLMHeadModel(config=config_encoder)
+        text_width = self.text_encoder.config.hidden_size
+        self.vision_proj = nn.Linear(vision_width, embed_dim)
+        self.text_proj = nn.Linear(text_width, embed_dim)
+
+        self.temp = nn.Parameter(torch.ones([]) * config['temp'])
+
+        self.queue_size = config['queue_size']
+
+        if self.distill:
+            visual_encoder_m = vit_small(
+                img_size=(config['image_res'], config['image_res']),
+                patch_size=config['patch_size'],
+                return_all_tokens=True,
+            )
+            self.visual_encoder_m = visual_encoder_m
+            self.text_encoder_m = BertLMHeadModel(config=config_encoder)
+            self.vision_proj_m = nn.Linear(vision_width, embed_dim)
+            self.text_proj_m = nn.Linear(text_width, embed_dim)
+
+            self.model_pairs = [[self.visual_encoder, self.visual_encoder_m],
+                                [self.text_encoder, self.text_encoder_m],
+                                [self.vision_proj, self.vision_proj_m],
+                                [self.text_proj, self.text_proj_m],
+                                ]
+            self.copy_params()
+            self.momentum = config['momentum']
+
+        # create the queue
+        self.register_buffer("image_queue", torch.randn(embed_dim, self.queue_size))
+        self.register_buffer("text_queue", torch.randn(embed_dim, self.queue_size))
+        self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
+
+        self.image_queue = nn.functional.normalize(self.image_queue, dim=0)
+        self.text_queue = nn.functional.normalize(self.text_queue, dim=0)
+        self.config = config
+
+        self.temp = nn.Parameter(torch.ones([]) * config['temp'])
+    def forward(self, device, image, answer=None, alpha=0, k=None, weights=None, train=True):
+
+        with torch.no_grad():
+            self.temp.clamp_(0.001,0.5)
+
+        image_embeds_raw = self.visual_encoder.get_intermediate_layers(image, 1)[0]
+        image_embeds = image_embeds_raw
+
+        image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
+
+        if train:
+            '''
+            k: number of answers for each question
+            weights: weight for each answer
+            '''
+            answer_targets = answer.input_ids.masked_fill(answer.input_ids == self.tokenizer.pad_token_id, -100)
+
+            if self.distill:
+
+                with torch.no_grad():
+                    self._momentum_update()
+                    image_embeds_m_raw = self.visual_encoder_m.get_intermediate_layers(image, 1)[0]
+                    image_embeds_m = image_embeds_m_raw
+
+                    answer_output_m = self.text_encoder_m(answer.input_ids,
+                                                   attention_mask=answer.attention_mask,
+                                                   encoder_hidden_states=image_embeds_m,
+                                                   encoder_attention_mask=image_atts,
+                                                   return_dict=True,
+                                                   is_decoder=True,
+                                                   output_hidden_states=True
+                                                   )
+                    logits_m = answer_output_m.logits[:, :-1, :].contiguous()
+
+                answer_output = self.text_encoder(answer.input_ids,
+                                                  attention_mask=answer.attention_mask,
+                                                  encoder_hidden_states=image_embeds,
+                                                  encoder_attention_mask=image_atts,
+                                                  labels=answer_targets,
+                                                  return_dict=True,
+                                                  is_decoder=True,
+                                                  soft_labels=F.softmax(logits_m, dim=-1),
+                                                  reduction='none',
+                                                  output_hidden_states=True
+                                                  )
+            else:
+                answer_output = self.text_encoder(answer.input_ids,
+                                                  attention_mask=answer.attention_mask,
+                                                  encoder_hidden_states=image_embeds,
+                                                  encoder_attention_mask=image_atts,
+                                                  labels=answer_targets,
+                                                  return_dict=True,
+                                                  is_decoder=True,
+                                                  reduction='none',
+                                                  output_hidden_states=True
+                                                  )
+
+            mlm_loss = weights * answer_output.loss
+            mlm_loss = mlm_loss.sum() / image.size(0)
+
+            return mlm_loss
+
+        else:
+            if self.config['search'] == 'greedy':
+                bos_token = answer
+                seq = torch.cuda.LongTensor([bos_token]).repeat(image_embeds.size(0), 1)  # bos token
+                for i in range(self.config['max_words_length']):
+                    next_token = self.pred_next(image_embeds, image_atts, seq)
+                    seq = torch.cat([seq, next_token.unsqueeze(0)], dim=1)
+                    if next_token[0] == int(self.config['eos_token']):
+                        break
+                return seq
+
+            elif self.config['search'] == 'beam':
+                output_candidates = self.beam_search(image_embeds, image_atts, device)
+                return output_candidates
+
+    @torch.no_grad()
+    def copy_params(self):
+        for model_pair in self.model_pairs:
+            for param, param_m in zip(model_pair[0].parameters(), model_pair[1].parameters()):
+                param_m.data.copy_(param.data)  # initialize
+                param_m.requires_grad = False  # not update by gradient
+
+    @torch.no_grad()
+    def _momentum_update(self):
+        for model_pair in self.model_pairs:
+            for param, param_m in zip(model_pair[0].parameters(), model_pair[1].parameters()):
+                param_m.data = param_m.data * self.momentum + param.data * (1. - self.momentum)
+
+    def rank_answer(self, question_states, question_atts, answer_ids, answer_atts, k):
+
+        num_ques = question_states.size(0)
+        start_ids = answer_ids[0, 0].repeat(num_ques, 1)  # bos token
+
+        start_output = self.text_encoder(start_ids,
+                                         encoder_hidden_states=question_states,
+                                         encoder_attention_mask=question_atts,
+                                         is_decoder=True,
+                                         return_dict=True,
+                                         reduction='none')
+        logits = start_output.logits[:, 0, :]  # first token's logit
+
+        # topk_probs: top-k probability
+        # topk_ids: [num_question, k]
+        answer_first_token = answer_ids[:, 1]
+        prob_first_token = F.softmax(logits, dim=1).index_select(dim=1, index=answer_first_token)
+        topk_probs, topk_ids = prob_first_token.topk(k, dim=1)
+
+        # answer input: [num_question*k, answer_len]
+        input_ids = []
+        input_atts = []
+        for b, topk_id in enumerate(topk_ids):
+            input_ids.append(answer_ids.index_select(dim=0, index=topk_id))
+            input_atts.append(answer_atts.index_select(dim=0, index=topk_id))
+        input_ids = torch.cat(input_ids, dim=0)
+        input_atts = torch.cat(input_atts, dim=0)
+
+        targets_ids = input_ids.masked_fill(input_ids == self.tokenizer.pad_token_id, -100)
+
+        # repeat encoder's output for top-k answers
+        question_states = tile(question_states, 0, k)
+        question_atts = tile(question_atts, 0, k)
+
+        output = self.text_encoder(input_ids,
+                                   attention_mask=input_atts,
+                                   encoder_hidden_states=question_states,
+                                   encoder_attention_mask=question_atts,
+                                   labels=targets_ids,
+                                   is_decoder=True,
+                                   return_dict=True,
+                                   reduction='none')
+
+        answer_loss = output.loss
+        answer_loss = answer_loss.view(input_ids.size(0), -1)
+
+        # topk_prob: first token probability
+        topk_probs = topk_probs.view(-1, 1)
+        log_probs = torch.cat([topk_probs.log(), -answer_loss], dim=1)
+
+        # re-calculate log probabilities for the answer sequences using chain rule
+        log_probs_sum = log_probs.sum(1)
+        log_probs_sum = log_probs_sum.view(num_ques, k)
+
+        topk_probs = F.softmax(log_probs_sum, dim=-1)
+        # get top-k after re-ranking
+        topk_probs, rerank_id = topk_probs.topk(k, dim=1)
+        topk_ids = torch.gather(topk_ids, 1, rerank_id)
+
+        return topk_ids, topk_probs
+
+    def pred_next(self, question_states, question_atts, answer_ids):
+
+        output = self.text_encoder(answer_ids,
+                                   encoder_hidden_states=question_states,
+                                   encoder_attention_mask=question_atts,
+                                   is_decoder=True,
+                                   return_dict=True,
+                                   reduction='none')
+        logits = output.logits[:, -1, :]  # first token's logit
+
+        # topk_probs: top-k probability
+        # topk_ids: [num_question, k]
+        prob_next_token = F.softmax(logits, dim=1)
+        pred_next_token = torch.argmax(prob_next_token, dim=1)
+
+        return pred_next_token
+
+    @torch.no_grad()
+    def _dequeue_and_enqueue(self, image_feat, text_feat):
+        # gather keys before updating queue
+        image_feats = concat_all_gather(image_feat)
+        text_feats = concat_all_gather(text_feat)
+
+        batch_size = image_feats.shape[0]
+
+        ptr = int(self.queue_ptr)
+        assert self.queue_size % batch_size == 0  # for simplicity
+
+        # replace the keys at ptr (dequeue and enqueue)
+        self.image_queue[:, ptr:ptr + batch_size] = image_feats.T
+        self.text_queue[:, ptr:ptr + batch_size] = text_feats.T
+        ptr = (ptr + batch_size) % self.queue_size  # move pointer
+
+        self.queue_ptr[0] = ptr
+
+def tile(x, dim, n_tile):
+    init_dim = x.size(dim)
+    repeat_idx = [1] * x.dim()
+    repeat_idx[dim] = n_tile
+    x = x.repeat(*(repeat_idx))
+    order_index = torch.LongTensor(np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)]))
+    return torch.index_select(x, dim, order_index.to(x.device))
 
 @torch.no_grad()
 def concat_all_gather(tensor):

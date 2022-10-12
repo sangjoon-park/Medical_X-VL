@@ -24,12 +24,12 @@ from torch.utils.data import DataLoader
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
 
-from models.model_generation import XVLModel
+from models.model_generation import XVLModel, XVLModel_infer
 from models.vit import interpolate_pos_embed
 from models.tokenization_bert import BertTokenizer
 
 import utils
-from dataset import create_dataset, create_sampler, create_loader
+from dataset import create_dataset, create_sampler, create_loader, gen_collate_fn
 from scheduler import create_scheduler
 from optim import create_optimizer
 from ibot_utils import iBOTLoss
@@ -96,8 +96,6 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
 
         loss = loss_mlm + loss_ita + loss_itm + loss_ibot
 
-        # loss.backward()
-        # optimizer.step()
         param_norms = None
         if fp16_scaler is None:
             loss.backward()
@@ -130,6 +128,35 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     print("Averaged stats:", metric_logger.global_avg())
     return {k: "{:.3f}".format(meter.global_avg) for k, meter in metric_logger.meters.items()}
 
+def evaluation(model, data_loader, tokenizer, device, config):
+    # test
+    model.eval()
+
+    metric_logger = utils.MetricLogger(delimiter="  ")
+    header = 'Generate Generation test result:'
+    print_freq = 50
+
+    results = {}
+
+    bos_token = config['bos_token']
+
+    for n, (image, caption, image_path) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+        image = image.to(device, non_blocking=True)
+        candidates = model(device, image, bos_token, train=False, k=config['k_test'])
+
+        if config['search'] == 'greedy':
+            sentences = tokenizer.decode(candidates[0])
+            results[image_path[0]] = {'caption': caption, 'predicted': sentences}
+
+        elif config['search'] == 'beam':
+            sentences = []
+            for candidate in candidates[0]:
+                candidate = tokenizer.decode(candidate[0])
+                sentences.append(candidate)
+
+            results[image_path[0]] = {'caption': caption, 'predicted': sentences[-1]}
+
+    return results
 
 def main(args, config):
     utils.init_distributed_mode(args)
@@ -152,7 +179,7 @@ def main(args, config):
         fp16_scaler = torch.cuda.amp.GradScaler()
 
     #### Dataset ####
-    print("Creating dataset")
+    print("Creating Generation dataset")
     datasets = [create_dataset('pretrain', config)]
 
     if args.distributed:
@@ -163,15 +190,32 @@ def main(args, config):
         samplers = [None]
 
     data_loader = \
-    create_loader(datasets, samplers, batch_size=[config['batch_size']], num_workers=[4], is_trains=[True],
+    create_loader(datasets, samplers, batch_size=[config['batch_size_train']], num_workers=[4], is_trains=[True],
                   collate_fns=[None])[0]
+
+    datasets = create_dataset('gen', config)
+
+    if args.distributed:
+        num_tasks = utils.get_world_size()
+        global_rank = utils.get_rank()
+        samplers = create_sampler(datasets, [True, False], num_tasks, global_rank)
+    else:
+        samplers = [None, None]
+
+    _, test_loader = create_loader(datasets, samplers,
+                                              batch_size=[config['batch_size_train'], config['batch_size_test']],
+                                              num_workers=[4, 4], is_trains=[True, False],
+                                              collate_fns=[gen_collate_fn, None])
 
     # tokenizer = BertTokenizer.from_pretrained(args.text_encoder)
     tokenizer = AutoTokenizer.from_pretrained("./my_tokenizer/")
 
     #### Model ####
     print("Creating model")
-    model = ALBEF(data_loader, config=config, text_encoder=args.text_encoder, tokenizer=tokenizer, init_deit=True)
+    if not args.evaluate:
+        model = XVLModel(data_loader, config=config, text_encoder=args.text_encoder, tokenizer=tokenizer, init_deit=True)
+    else:
+        model = XVLModel_infer(config=config, text_encoder=args.text_encoder, tokenizer=tokenizer)
 
     model = model.to(device)
 
@@ -181,13 +225,31 @@ def main(args, config):
     lr_scheduler, _ = create_scheduler(arg_sche, optimizer)
 
     if args.checkpoint:
-        checkpoint = torch.load(args.checkpoint, map_location='cpu')
-        state_dict = checkpoint['model']
-        model.load_state_dict(state_dict)
-        print('load checkpoint from %s' % args.checkpoint)
+        if not args.evaluate:
+            checkpoint = torch.load(args.checkpoint, map_location='cpu')
+            state_dict = checkpoint['model']
+            model.load_state_dict(state_dict)
+            print('load checkpoint from %s' % args.checkpoint)
+        else:
+            checkpoint = torch.load(args.checkpoint, map_location='cpu')
+            state_dict = checkpoint['model']
+            pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder.backbone.pos_embed'],
+                                                       model.visual_encoder)
+            state_dict['visual_encoder.backbone.pos_embed'] = pos_embed_reshaped
+            state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
 
-    model.copy_params()
-    print('model parameters are copied.')
+            if config['distill']:
+                m_pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder_m.pos_embed'],
+                                                             model.visual_encoder_m)
+                state_dict['visual_encoder_m.pos_embed'] = m_pos_embed_reshaped
+
+            msg = model.load_state_dict(state_dict, strict=False)
+            print('load checkpoint from %s' % args.checkpoint)
+            print(msg)
+
+    if config['distill']:
+        model.copy_params()
+        print('model parameters are copied.')
 
     model_without_ddp = model
     if args.distributed:
@@ -198,6 +260,8 @@ def main(args, config):
     start_time = time.time()
 
     for epoch in range(start_epoch, max_epoch):
+        if args.evaluate:
+            break
 
         if epoch > 0:
             lr_scheduler.step(epoch + warmup_steps)
@@ -222,6 +286,10 @@ def main(args, config):
 
         dist.barrier()
 
+    generation_results = evaluation(model, test_loader, tokenizer, device, config)
+    with open('./gen_{}.json'.format(args.output_dir.split('/')[-3], config['dataset']), 'w') as f:
+        json.dump(generation_results, f)
+
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))
@@ -231,6 +299,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', default='./configs/Pretrain.yaml')
     parser.add_argument('--checkpoint', default='')
+    parser.add_argument('--evaluate', action='store_true')
     parser.add_argument('--resume', default=False, type=bool)
     parser.add_argument('--output_dir', default='Pretrain/')
     parser.add_argument('--text_encoder', default='bert-base-uncased')
