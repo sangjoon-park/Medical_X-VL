@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
 
-from models.model_vqa import ALBEF
+from models.model_vqa import XVLModel
 from models.vit import interpolate_pos_embed
 from models.tokenization_bert import BertTokenizer
 import pandas as pd
@@ -137,7 +137,7 @@ def main(args, config):
 
     #### Model ####
     print("Creating model")
-    model = ALBEF(config=config, text_encoder=args.text_encoder, text_decoder=args.text_decoder, tokenizer=tokenizer)
+    model = XVLModel(config=config, text_encoder=args.text_encoder, text_decoder=args.text_decoder, tokenizer=tokenizer)
     model = model.to(device)
 
     arg_opt = utils.AttrDict(config['optimizer'])
@@ -146,12 +146,6 @@ def main(args, config):
     lr_scheduler, _ = create_scheduler(arg_sche, optimizer)
 
     if args.checkpoint:
-        # checkpoint = torch.load(args.checkpoint, map_location='cpu')
-        # state_dict = checkpoint['model']
-        #
-        # # reshape positional embedding to accomodate for image resolution change
-        # pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder.pos_embed'], model.visual_encoder)
-        # state_dict['visual_encoder.pos_embed'] = pos_embed_reshaped
         checkpoint = torch.load(args.checkpoint, map_location='cpu')
         state_dict = checkpoint['model']
 

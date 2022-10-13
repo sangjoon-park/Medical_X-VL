@@ -6,7 +6,7 @@ answer_list: '/COVID_8TB/sangjoon/vision_language/data_RAD/home/mimic-cxr/datase
 vqa_root: '../data/VQA/Images/mscoco/' #train2014/
 vg_root: '../data/VG/VG_100K/'  #image/
 
-chest_only: False
+chest_only: True
 
 image_res: 224
 batch_size_train: 32
