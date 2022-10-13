@@ -532,7 +532,7 @@ class Vqa_dataset(Dataset):
             for ans in self.ann:
                 answer = pre_question(ans['answer'], self.max_ques_words)
 
-                # Unify the words with same meaning
+                # [Prepocess] Unify expression with same semantic meaning
                 if answer == 'pa':
                     answer = 'posterior anterior'
                 elif answer == 'x ray':
@@ -549,10 +549,11 @@ class Vqa_dataset(Dataset):
                     answer = 't2 weighted'
                 elif answer == 'mr flair':
                     answer = 'flair'
+                elif answer == 'ct with contrast':
+                    answer = 'ct'
 
                 if not answer in self.answer_list:
                     self.answer_list.append(answer)
-            print('fond')
 
     def __len__(self):
         return len(self.ann)
@@ -806,7 +807,7 @@ class Det_eval_ImageFolder(Dataset):
                 error = None
             else:
                 cor = random.random()
-                if cor >= 0.95: # corruption probability (5%)
+                if cor >= 0.958: # corruption probability (5%)
                     error = random.sample(available_errors, 1)[0]
                 else:
                     error = None

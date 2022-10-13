@@ -161,9 +161,10 @@ def main(args, config):
                 pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder.backbone.pos_embed'],
                                                            model.visual_encoder)
                 state_dict['visual_encoder.backbone.pos_embed'] = pos_embed_reshaped
-                m_pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder_m.backbone.pos_embed'],
-                                                             model.visual_encoder_m)
-                state_dict['visual_encoder_m.backbone.pos_embed'] = m_pos_embed_reshaped
+                if config['distill']:
+                    m_pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder_m.backbone.pos_embed'],
+                                                                 model.visual_encoder_m)
+                    state_dict['visual_encoder_m.backbone.pos_embed'] = m_pos_embed_reshaped
                 state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
 
                 if not args.evaluate:
@@ -199,8 +200,9 @@ def main(args, config):
         print('load checkpoint from %s' % args.checkpoint)
         print(msg)
 
-    model.copy_params()
-    print('model parameters are copied.')
+    if config['distill']:
+        model.copy_params()
+        print('model parameters are copied.')
 
     model_without_ddp = model
     if args.distributed:
@@ -245,6 +247,7 @@ def main(args, config):
     vqa_result = evaluation(model, test_loader, tokenizer, device, config)
     result_file = save_result(vqa_result, args.result_dir, 'vqa_result_epoch%d' % epoch)
 
+    # Load all answer list
     ann = json.load(open('/COVID_8TB/sangjoon/vision_language/data_RAD/home/mimic-cxr/dataset/data_RAD/testset.json', 'r'))
     test_list = []
     for data in ann:
@@ -252,6 +255,8 @@ def main(args, config):
         d_qid = data[qid]
         d_ans = pre_question(data[answer], 50)
         d_type = data[answer_type]
+
+        # [Prepocess] Unify expression with same semantic meaning
         if d_ans == 'pa':
             d_ans = 'posterior anterior'
         elif d_ans == 'x ray':
@@ -268,6 +273,8 @@ def main(args, config):
             d_ans = 't2 weighted'
         elif d_ans == 'mr flair':
             d_ans = 'flair'
+        elif d_ans == 'ct with contrast':
+            d_ans = 'ct'
 
         test_list.append([d_qid, d_ans, d_type])
     df = pd.DataFrame(test_list, columns=['qid', 'answer', 'type'])
