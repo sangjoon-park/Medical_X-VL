@@ -67,47 +67,47 @@ https://drive.google.com/file/d/16y3eJRYQCg-B8rg9eB3XRA-6PcfHCNmA/view?usp=shari
 ### Vision-Language Pre-training
 First, download ImageNet-pretrained weights for the visual encoder from this [link](https://github.com/bytedance/ibot). We utilized pre-trained ViT-S/16 model as the visual encoder.
 ```
->  --nproc_per_node=1 --use_env Pretrain.py --config ./configs/Pretrain.yaml --output_dir ./output/
+>  --config ./configs/Pretrain.yaml --output_dir ./output/
 ```
 
 ### Image-Report retrieval
 Our model support zero-shot retrieval for image-to-text and text-to-image retrieval without any fine-tuning step.
 ```
->  --nproc_per_node=1 --use_env Retrieval.py --config ./configs/Retrieval.yaml --output_dir ./output/ --checkpoint /PATH/TO/PRETRAIN/ --evaluate
+>  --config ./configs/Retrieval.yaml --output_dir ./output/ --checkpoint /PATH/TO/PRETRAIN/ --evaluate
 ```
 
 ### Report Generation
 From the VLP weights, the model can be fine-tuned for the report generation task as below.
 ```
->  --nproc_per_node=1 --use_env Generation.py --config ./configs/Generation.yaml --output_dir ./output/ --checkpoint /PATH/TO/PRETRAIN/
+>  --config ./configs/Generation.yaml --output_dir ./output/ --checkpoint /PATH/TO/PRETRAIN/
 ```
 
 After fine-tuning, inference can be done as below.
 ```
->  --nproc_per_node=1 --use_env Generation.py --config ./configs/Generation.yaml --output_dir ./output/ --checkpoint /PATH/TO/FINETUNE/ --evaluate
+>  --config ./configs/Generation.yaml --output_dir ./output/ --checkpoint /PATH/TO/FINETUNE/ --evaluate
 ```
 
 ### Vision-Question Answering (VQA)
 From the VLP weights, the model can be fine-tuned for the VQA task as below.
 ```
->  --nproc_per_node=1 --use_env VQA.py --config ./configs/VQA.yaml --output_dir ./output/ --checkpoint /PATH/TO/PRETRAIN/
+>  --config ./configs/VQA.yaml --output_dir ./output/ --checkpoint /PATH/TO/PRETRAIN/
 ```
 
 After fine-tuning, inference can be done as below.
 ```
->  --nproc_per_node=1 --use_env VQA.py --config ./configs/VQA.yaml --output_dir ./output/ --checkpoint /PATH/TO/FINETUNE/ --evaluate
+>  --config ./configs/VQA.yaml --output_dir ./output/ --checkpoint /PATH/TO/FINETUNE/ --evaluate
 ```
 
 ### Error Detection
 Human error (patient mismatch, orientation confusion) can be detected without any fine-tuning step, as the model is already trained to correlate the image and report in the pre-training stage.
 ```
->  --nproc_per_node=1 --use_env Detection.py --config ./configs/Detection.yaml --output_dir ./output/ --checkpoint /PATH/TO/PRETRAIN/ --evaluate
+>  --config ./configs/Detection.yaml --output_dir ./output/ --checkpoint /PATH/TO/PRETRAIN/ --evaluate
 ```
 
 ### Visualization
 Succesful visualization will show the cross-attention between the words and the visual semantics (image patches) as below.
 ```
->  --nproc_per_node=1 --use_env Visualization.py --config ./configs/Pretrain.yaml --output_dir ./output/ --checkpoint /PATH/TO/PRETRAIN/ --evaluate
+>  --config ./configs/Pretrain.yaml --output_dir ./output/ --checkpoint /PATH/TO/PRETRAIN/ --evaluate
 ```
 
 <div align="center">
