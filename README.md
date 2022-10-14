@@ -55,12 +55,12 @@ You can download the pretrained weights on the CheXpert dataset in link below, w
 
 ### VLP model for Chest radiographs
 
-https://drive.google.com/file/d/16y3eJRYQCg-B8rg9eB3XRA-6PcfHCNmA/view?usp=sharing
+https://drive.google.com/file/d/1RKowiRjRCIj6WUlzhFsJsgaA33g9K9l2/view?usp=sharing
 
 
 ### VLP model for abdominal radiographs
 
-https://drive.google.com/file/d/16y3eJRYQCg-B8rg9eB3XRA-6PcfHCNmA/view?usp=sharing
+https://drive.google.com/file/d/1Y9uc_eVgp0irNE0BUka9_0qbY5urdS6_/view?usp=sharing
 
 
 ## Training the model
