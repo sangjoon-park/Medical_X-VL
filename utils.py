@@ -514,3 +514,30 @@ def transform(image, cfg):
     image = image.transpose((2, 0, 1))
 
     return image
+
+
+def post_process(answer):
+    # [Prepocess] Unify expression with same semantic meaning
+    if answer == 'pa':
+        answer = 'posterior anterior'
+    elif answer == 'x ray':
+        answer = 'x-ray'
+    elif answer == 'xray':
+        answer = 'x-ray'
+    elif answer == 'xr':
+        answer = 'x-ray'
+    elif answer == 'plain film x ray':
+        answer = 'x-ray'
+    elif answer == 'plain film':
+        answer = 'x-ray'
+    elif answer == 't2 mri':
+        answer = 't2 weighted'
+    elif answer == 't2 weighted mri':
+        answer = 't2 weighted'
+    elif answer == 'mr flair':
+        answer = 'flair'
+    elif answer == 'ct with contrast':
+        answer = 'ct'
+    elif answer == 'axial plane':
+        answer = 'axial'
+    return answer

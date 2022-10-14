@@ -15,6 +15,7 @@ from PIL import Image
 from dataset.utils import pre_caption, pre_question
 import torch
 import glob
+from utils import post_process
 
 
 class ImageFolderMask(Dataset):
@@ -531,26 +532,7 @@ class Vqa_dataset(Dataset):
             self.answer_list = []
             for ans in self.ann:
                 answer = pre_question(ans['answer'], self.max_ques_words)
-
-                # [Prepocess] Unify expression with same semantic meaning
-                if answer == 'pa':
-                    answer = 'posterior anterior'
-                elif answer == 'x ray':
-                    answer = 'x-ray'
-                elif answer == 'xray':
-                    answer = 'x-ray'
-                elif answer == 'xr':
-                    answer = 'x-ray'
-                elif answer == 'plain film x ray':
-                    answer = 'x-ray'
-                elif answer == 'plain film':
-                    answer = 'x-ray'
-                elif answer == 't2 mri':
-                    answer = 't2 weighted'
-                elif answer == 'mr flair':
-                    answer = 'flair'
-                elif answer == 'ct with contrast':
-                    answer = 'ct'
+                answer = post_process(answer)
 
                 if not answer in self.answer_list:
                     self.answer_list.append(answer)

@@ -29,6 +29,7 @@ from dataset.utils import pre_question
 from scheduler import create_scheduler
 from optim import create_optimizer
 from transformers import AutoTokenizer
+from utils import post_process
 
 
 def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device, scheduler, config):
@@ -249,26 +250,7 @@ def main(args, config):
         d_qid = data[qid]
         d_ans = pre_question(data[answer], 50)
         d_type = data[answer_type]
-
-        # [Prepocess] Unify expression with same semantic meaning
-        if d_ans == 'pa':
-            d_ans = 'posterior anterior'
-        elif d_ans == 'x ray':
-            d_ans = 'x-ray'
-        elif d_ans == 'xray':
-            d_ans = 'x-ray'
-        elif d_ans == 'xr':
-            d_ans = 'x-ray'
-        elif d_ans == 'plain film x ray':
-            d_ans = 'x-ray'
-        elif d_ans == 'plain film':
-            d_ans = 'x-ray'
-        elif d_ans == 't2 mri':
-            d_ans = 't2 weighted'
-        elif d_ans == 'mr flair':
-            d_ans = 'flair'
-        elif d_ans == 'ct with contrast':
-            d_ans = 'ct'
+        d_ans = post_process(d_ans)
 
         test_list.append([d_qid, d_ans, d_type])
     df = pd.DataFrame(test_list, columns=['qid', 'answer', 'type'])
