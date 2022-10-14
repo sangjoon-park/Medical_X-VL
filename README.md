@@ -2,7 +2,7 @@
 
 ## : Code for "Self-supervised Co-learning of Uncurated Images and Reports Enables Oversight AI in Radiology"
 ### Medical X-VL: Medical Domain X-attention Vision-Language model
-### Paper link: [https://github.com/sangjoon-park/Medical_X-VL](https://github.com/sangjoon-park/Medical_X-VL)
+### Paper link: [https://arxiv.org/abs/2208.05140](https://arxiv.org/abs/2208.05140)
 
 <div align="center">
   <img src="./assets/teaser.png">
