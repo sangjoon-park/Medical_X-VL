@@ -270,7 +270,9 @@ class Re_eval_ImageFolder(Dataset):
         caption = self.ann[index]['caption'].replace('.', '. ')
         caption = pre_caption(caption, self.max_words) + '.'
 
-        return output, index, self.ann[index]['image'], caption
+        label = self.ann[index]['label']
+
+        return output, index, self.ann[index]['image'], caption, label
 
 
 class Re_train_ImageFolder(Dataset):
@@ -699,7 +701,7 @@ class Cls_COVID(Dataset):
         labels = np.array(labels)
         labels = torch.from_numpy(labels)
 
-        return output, labels.float()
+        return output, labels.float(), image_path
 
 
 class Det_eval_ImageFolder(Dataset):

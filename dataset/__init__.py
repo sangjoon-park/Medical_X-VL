@@ -94,6 +94,17 @@ def gen_collate_fn(batch):
     return torch.stack(image_list, dim=0), answer_list, torch.Tensor(weight_list), n
 
 
+def re_collate_fn(batch):
+    image_list, index_list, id_list, caption_list, label_list = [], [], [], [], []
+    for image, index, id, caption, label in batch:
+        image_list.append(image)
+        index_list.append(index)
+        id_list.append(id)
+        caption_list.append(caption)
+        label_list.append(label)
+    return torch.stack(image_list, dim=0), index_list, id_list, caption_list, label_list
+
+
 def vqa_collate_fn(batch):
     image_list, question_list, answer_list, weight_list, n = [], [], [], [], []
     for image, question, answer, weights in batch:

@@ -517,7 +517,7 @@ def transform(image, cfg):
 
 
 def post_process(answer):
-    # [Prepocess] Unify expression with same semantic meaning
+    # [Prepocess] Unify expression with same semantic meaningX
     if answer == 'pa':
         answer = 'posterior anterior'
     elif answer == 'x ray':

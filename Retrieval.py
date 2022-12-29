@@ -23,7 +23,7 @@ from models.tokenization_bert import BertTokenizer
 from transformers import AutoTokenizer
 
 import utils
-from dataset import create_dataset, create_sampler, create_loader
+from dataset import create_dataset, create_sampler, create_loader, re_collate_fn
 from scheduler import create_scheduler
 from optim import create_optimizer
 from fuzzywuzzy import fuzz
@@ -91,7 +91,7 @@ def evaluation(model, data_loader, tokenizer, device, config):
     img_r10s = []
 
     # eval every batch
-    for image, img_id, label, caption in data_loader:
+    for image, img_id, label, caption, batch_labels in data_loader:
         image = image.to(device)
         image_feat = model.visual_encoder(image)
         image_embed = model.vision_proj(image_feat[:, 0, :])
@@ -192,7 +192,7 @@ def evaluation(model, data_loader, tokenizer, device, config):
         score_val_i2t, score_val_t2i = score_matrix_i2t.cpu().numpy(), score_matrix_t2i.cpu().numpy()
 
         eval_result = itm_eval(score_val_i2t, score_val_t2i, data_loader.dataset.txt2img, data_loader.dataset.img2txt,
-                               data_loader.dataset.label)
+                               data_loader.dataset.label, label, caption, batch_labels)
 
         txt_r1 = eval_result['txt_r1']  # text retrieval (i2t)
         img_r1 = eval_result['img_r1']  # image retrieval (t2i)
@@ -219,19 +219,29 @@ def evaluation(model, data_loader, tokenizer, device, config):
 
 
 @torch.no_grad()
-def itm_eval(scores_i2t, scores_t2i, txt2img, img2txt, labels):
+def itm_eval(scores_i2t, scores_t2i, txt2img, img2txt, labels, imgs, txts, batch_labels):
     # Images->Text
     ranks = np.zeros(scores_i2t.shape[0])
+    i2t_results = {}
 
     for index, score in enumerate(scores_i2t):
         inds = np.argsort(score)[::-1]
+
+        img_id = imgs[index]
+        correct = txts[index]
+        best_1 = txts[inds[0]]
+        best_2 = txts[inds[1]]
+        best_3 = txts[inds[2]]
+        worst_1 = txts[inds[99]]
+
+        i2t_results[img_id] = {'correct': correct, 'b1': best_1, 'b2': best_2, 'b3': best_3, 'w': worst_1}
 
         # Overalapping labels
         positives = np.zeros_like(inds)
         for x, ind in enumerate(inds):
 
-            this = ''.join(labels[img2txt[index][0]])
-            cand = ''.join(labels[ind])
+            this = ''.join(batch_labels[img2txt[index][0]])
+            cand = ''.join(batch_labels[ind])
 
             if fuzz.token_sort_ratio(this, cand) == 100:
                 positives[x] = 1
@@ -243,6 +253,9 @@ def itm_eval(scores_i2t, scores_t2i, txt2img, img2txt, labels):
         if tmp < rank:
             rank = tmp
         ranks[index] = rank
+
+    with open('./retireval_i2t.json', 'w') as f:
+        json.dump(i2t_results, f)
 
     # Compute metrics
     tr1 = 100.0 * len(np.where(ranks < 1)[0]) / len(ranks)
@@ -251,16 +264,26 @@ def itm_eval(scores_i2t, scores_t2i, txt2img, img2txt, labels):
 
     # Text->Images
     ranks = np.zeros(scores_t2i.shape[0])
+    t2i_results = {}
 
     for index, score in enumerate(scores_t2i):
         inds = np.argsort(score)[::-1]
+
+        txt_id = txts[index]
+        correct = imgs[index]
+        best_1 = imgs[inds[0]]
+        best_2 = imgs[inds[1]]
+        best_3 = imgs[inds[2]]
+        worst_1 = imgs[inds[99]]
+
+        t2i_results[txt_id] = {'correct': correct, 'b1': best_1, 'b2': best_2, 'b3': best_3, 'w': worst_1}
 
         # Overalapping labels
         positives = np.zeros_like(inds)
         for x, ind in enumerate(inds):
 
-            this = ''.join(labels[txt2img[index]])
-            cand = ''.join(labels[ind])
+            this = ''.join(batch_labels[txt2img[index]])
+            cand = ''.join(batch_labels[ind])
 
             if fuzz.token_sort_ratio(this, cand) == 100:
                 positives[x] = 1
@@ -272,6 +295,9 @@ def itm_eval(scores_i2t, scores_t2i, txt2img, img2txt, labels):
         if tmp < rank:
             rank = tmp
         ranks[index] = rank
+
+    with open('./retireval_t2i.json', 'w') as f:
+        json.dump(t2i_results, f)
 
     # Compute metrics
     ir1 = 100.0 * len(np.where(ranks < 1)[0]) / len(ranks)
@@ -313,7 +339,7 @@ def main(args, config):
     test_txt_r10t = []
     test_img_r10t = []
 
-    for j in range(10):
+    for j in range(1):
 
         cudnn.benchmark = True
 
@@ -333,7 +359,7 @@ def main(args, config):
                                                                   config['batch_size_test']] * 2,
                                                               num_workers=[4, 4, 4],
                                                               is_trains=[True, False, False],
-                                                              collate_fns=[None, None, None])
+                                                              collate_fns=[None, re_collate_fn, re_collate_fn])
 
         # tokenizer = BertTokenizer.from_pretrained(args.text_encoder)
         tokenizer = AutoTokenizer.from_pretrained("./my_tokenizer/")
@@ -474,8 +500,8 @@ def main(args, config):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', default='./configs/Retrieval_flickr.yaml')
-    parser.add_argument('--output_dir', default='output/Retrieval_flickr')
+    parser.add_argument('--config', default='./configs/Retrieval.yaml')
+    parser.add_argument('--output_dir', default='output/Retrieval')
     parser.add_argument('--checkpoint', default='')
     parser.add_argument('--text_encoder', default='bert-base-uncased')
     parser.add_argument('--evaluate', action='store_true')

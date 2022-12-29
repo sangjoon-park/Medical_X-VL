@@ -29,6 +29,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.metrics import classification_report
 from sklearn.metrics import confusion_matrix
 
+import pandas as pd
 
 def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device, scheduler, config):
     # train
@@ -42,7 +43,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     step_size = 100
     warmup_iterations = warmup_steps*step_size
     
-    for i,(image, label) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for i,(image, label, _) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         image = image.to(device)
         label = label.to(device)
 
@@ -86,7 +87,9 @@ def evaluation(model, data_loader, tokenizer, device, config, n):
     y_scores = [y_score_0, y_score_1, y_score_2, y_score_3, y_score_4]
     y_trues = [y_true_0, y_true_1, y_true_2, y_true_3, y_true_4]
 
-    for image, label in data_loader:
+    result_list = []
+
+    for image, label, path in data_loader:
         image = image.to(device)
         label = label.to(device)
 
@@ -94,7 +97,14 @@ def evaluation(model, data_loader, tokenizer, device, config, n):
 
         for cls in range(config['n_classes']):
             y_trues[cls].extend(label[:, cls].cpu().numpy())
-            y_scores[cls].extend(F.sigmoid(outputs[cls] + 1.5).cpu().numpy())
+            y_scores[cls].extend(F.sigmoid(outputs[cls] + 0.5).cpu().numpy())
+
+        y_label = label[:, cls].cpu().numpy()
+        y_pred = np.round(F.sigmoid(outputs[cls] + 0.5).cpu().numpy())
+
+        result_list.append([path, y_label, y_pred])
+    rf = pd.DataFrame(result_list, columns=['img_path', 'label', 'pred'])
+    rf.to_csv("CLS_DINO.csv", mode='w')
 
     aucs = []
     for c in range(config['n_classes']):
@@ -158,7 +168,9 @@ def main(args, config):
     
     if args.checkpoint:
         checkpoint = torch.load(args.checkpoint, map_location='cpu')
-        state_dict = checkpoint['model']
+        state_dict = checkpoint['student']
+        state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+        state_dict = {k.replace("backbone.", "visual_encoder."): v for k, v in state_dict.items()}
         msg = model.load_state_dict(state_dict, strict=False)
         print(msg)
 

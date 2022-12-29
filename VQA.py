@@ -246,14 +246,16 @@ def main(args, config):
     ann = json.load(open('/COVID_8TB/sangjoon/vision_language/data_RAD/home/mimic-cxr/dataset/data_RAD/testset.json', 'r'))
     test_list = []
     for data in ann:
-        qid, _, _, answer, answer_type, _, _, _ = data.keys()
+        qid, img_name, _, answer, answer_type, _, question, _ = data.keys()
         d_qid = data[qid]
         d_ans = pre_question(data[answer], 50)
         d_type = data[answer_type]
         d_ans = post_process(d_ans)
+        d_iid = data[img_name]
+        d_que = data[question]
 
-        test_list.append([d_qid, d_ans, d_type])
-    df = pd.DataFrame(test_list, columns=['qid', 'answer', 'type'])
+        test_list.append([d_qid, d_ans, d_type, d_iid, d_que])
+    df = pd.DataFrame(test_list, columns=['qid', 'answer', 'type', 'iid', 'question'])
 
     o_acc = 0
     c_acc = 0
@@ -261,12 +263,17 @@ def main(args, config):
     o_total = 0
     c_total = 0
     t_total = 0
+
+    result_list = []
+
     for vqa in vqa_result:
         qid_r, ans_r = vqa.keys()
         pred_qid = vqa[qid_r]
         pred_ans = vqa[ans_r]
         label_ans = df.loc[df.qid == pred_qid].answer.iloc[0]
         type = df.loc[df.qid == pred_qid].type.iloc[0]
+        iid = df.loc[df.qid == pred_qid].iid.iloc[0]
+        que = df.loc[df.qid == pred_qid].question.iloc[0]
 
         if type == 'OPEN':
             if pred_ans == label_ans:
@@ -281,6 +288,10 @@ def main(args, config):
         if pred_ans == label_ans:
             t_acc += 1
         t_total += 1
+
+        result_list.append([iid, que, type, label_ans, pred_ans])
+    rf = pd.DataFrame(result_list, columns=['iid', 'question', 'type', 'label', 'pred'])
+    rf.to_csv("VQA.csv", mode='w')
 
     o_accuracy = o_acc / o_total
     c_accuracy = c_acc / c_total
