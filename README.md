@@ -2,7 +2,7 @@
 
 ## : Code for "Self-supervised Co-learning of Uncurated Images and Reports Enables Oversight AI in Radiology"
 ### Medical X-VL: Medical Domain X-attention Vision-Language model
-### Paper link: [https://github.com/sangjoon-park/Medical_X-VL](https://github.com/sangjoon-park/Medical_X-VL)
+### Paper link: [https://arxiv.org/abs/2208.05140](https://arxiv.org/abs/2208.05140)
 
 <div align="center">
   <img src="./assets/teaser.png">
@@ -55,36 +55,60 @@ You can download the pretrained weights on the CheXpert dataset in link below, w
 
 ### VLP model for Chest radiographs
 
-https://drive.google.com/file/d/16y3eJRYQCg-B8rg9eB3XRA-6PcfHCNmA/view?usp=sharing
+https://drive.google.com/file/d/1RKowiRjRCIj6WUlzhFsJsgaA33g9K9l2/view?usp=sharing
 
 
 ### VLP model for abdominal radiographs
 
-https://drive.google.com/file/d/16y3eJRYQCg-B8rg9eB3XRA-6PcfHCNmA/view?usp=sharing
+https://drive.google.com/file/d/1Y9uc_eVgp0irNE0BUka9_0qbY5urdS6_/view?usp=sharing
 
 
 ## Training the model
 ### Vision-Language Pre-training
 First, download ImageNet-pretrained weights for the visual encoder from this [link](https://github.com/bytedance/ibot). We utilized pre-trained ViT-S/16 model as the visual encoder.
+```
+>  --config ./configs/Pretrain.yaml --output_dir ./output/
+```
 
 ### Image-Report retrieval
 Our model support zero-shot retrieval for image-to-text and text-to-image retrieval without any fine-tuning step.
+```
+>  --config ./configs/Retrieval.yaml --output_dir ./output/ --checkpoint /PATH/TO/PRETRAIN/ --evaluate
+```
 
 ### Report Generation
 From the VLP weights, the model can be fine-tuned for the report generation task as below.
+```
+>  --config ./configs/Generation.yaml --output_dir ./output/ --checkpoint /PATH/TO/PRETRAIN/
+```
 
 After fine-tuning, inference can be done as below.
+```
+>  --config ./configs/Generation.yaml --output_dir ./output/ --checkpoint /PATH/TO/FINETUNE/ --evaluate
+```
 
 ### Vision-Question Answering (VQA)
 From the VLP weights, the model can be fine-tuned for the VQA task as below.
+```
+>  --config ./configs/VQA.yaml --output_dir ./output/ --checkpoint /PATH/TO/PRETRAIN/
+```
 
 After fine-tuning, inference can be done as below.
+```
+>  --config ./configs/VQA.yaml --output_dir ./output/ --checkpoint /PATH/TO/FINETUNE/ --evaluate
+```
 
 ### Error Detection
 Human error (patient mismatch, orientation confusion) can be detected without any fine-tuning step, as the model is already trained to correlate the image and report in the pre-training stage.
+```
+>  --config ./configs/Detection.yaml --output_dir ./output/ --checkpoint /PATH/TO/PRETRAIN/ --evaluate
+```
 
 ### Visualization
 Succesful visualization will show the cross-attention between the words and the visual semantics (image patches) as below.
+```
+>  --config ./configs/Pretrain.yaml --output_dir ./output/ --checkpoint /PATH/TO/PRETRAIN/ --evaluate
+```
 
 <div align="center">
   <img src="./assets/fig_attention.png">
