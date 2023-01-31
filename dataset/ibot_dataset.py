@@ -16,11 +16,13 @@ from dataset.utils import pre_caption, pre_question
 import torch
 import glob
 from utils import post_process
+import cv2
+import h5py
 
 
 class ImageFolderMask(Dataset):
-    def __init__(self, task, ann_file, patch_size, pred_ratio, pred_ratio_var, pred_aspect_ratio,
-                 pred_shape='block', transforms=None, pred_start_epoch=0, max_words=120):
+    def __init__(self, ann_file, patch_size, pred_ratio, pred_ratio_var, pred_aspect_ratio,
+                 pred_shape='block', mode='train', transforms=None, pred_start_epoch=0, max_words=120):
         self.psz = patch_size
         self.pred_ratio = pred_ratio[0] if isinstance(pred_ratio, list) and \
                                            len(pred_ratio) == 1 else pred_ratio
@@ -33,59 +35,118 @@ class ImageFolderMask(Dataset):
         self.pred_start_epoch = pred_start_epoch
 
         # caption label and etc.
-        train_data = [json.loads(l) for l in open(ann_file[0])]
+        self.img_dset = h5py.File(ann_file[0], 'r')['cxr']
+        self.df = pd.read_csv(ann_file[1])
 
-        # Train data
-        if 'openi' in ann_file[0]:
-            train_list = []
-            for data in train_data:
-                _, label, txt, img = data.keys()
-                d_txt = data[txt]
-                d_img = data[img].replace('/home/data_storage/mimic-cxr/dataset/',
-                                          '/COVID_8TB/sangjoon/vision_language/')
-                d_label = data[label].replace("'", "").split(',')
-                train_list.append([d_img, d_txt, d_label])
-            self.train_df = pd.DataFrame(train_list, columns=['image', 'caption', 'label'])
-        else:
-            train_list = []
-            for data in train_data:
-                _, _, label, txt, img = data.keys()
-                d_txt = data[txt]
-                d_img = data[img].replace('/home/mimic-cxr/dataset/image_preprocessing/re_512_3ch/',
-                                          '/COVID_8TB/sangjoon/vision_language/mimic_dset/re_512_3ch/')
-                d_label = data[label].replace("'", "").split(',')
-                train_list.append([d_img, d_txt, d_label])
-            self.train_df = pd.DataFrame(train_list, columns=['image', 'caption', 'label'])
+        self.index_mapping = []
 
-        # Make into dictionary
-        self.ann = []
-        for sub_idx in range(len(self.train_df)):
-            subject = self.train_df.iloc[sub_idx]
-            label = subject['label']
-            if task == 'pretrain':
-                # captions = [subject['caption']]
-                captions = subject['caption'].split('.')
-                total_captions = []
-                for caption in captions:
-                    if len(caption) < 3:
-                        continue
-                    total_captions.append(caption)
-                len_sentence = len(total_captions)
-                len_choice = min(len_sentence, 10)
-                selected_captions = random.sample(total_captions, len_choice)
-                selected_captions = '.'.join(selected_captions)
-            elif task == 'generation':
-                selected_captions = subject['caption']
+        for i in range(len(self.df)):
+            split = self.df.iloc[i].split
+            findings = self.df.iloc[i].findings
+            impression = self.df.iloc[i].impression
+            # view = self.df.iloc[i].view
+            if split == mode and findings != 'None' and impression != 'None':
+                self.index_mapping.append(i)
 
-            if len(selected_captions) == 0:
-                continue
-            self.ann.append({'image': subject['image'], 'caption': selected_captions})
+        if len(self.img_dset) != len(self.df):
+            raise AssertionError()
+
+        # self.ann = []
+        # for data in all_data:
+        # dicom_id = data[-1].replace('.png', '')
+        # findings = self.df[self.df.dicom_id == dicom_id].findings.values[0]
+        # impression = self.df[self.df.dicom_id == dicom_id].impression.values[0]
+        #
+        # self.ann.append({'image': data, 'findings': findings, 'impression': impression})
+
+        # # Train data
+        # train_list = []
+        # for data in train_data:
+        #     _, _, label, txt, img = data.keys()
+        #     d_txt = data[txt]
+        #     d_img = data[img].replace('/home/mimic-cxr/dataset/image_preprocessing/re_512_3ch/',
+        #                               '/COVID_8TB/sangjoon/vision_language/mimic_dset/re_512_3ch/')
+        #     d_label = data[label].replace("'", "").split(',')
+        #     train_list.append([d_img, d_txt, d_label])
+        # self.train_df = pd.DataFrame(train_list, columns=['image', 'caption', 'label'])
+        #
+        # # Make into dictionary
+        # self.ann = []
+        # for sub_idx in range(len(self.train_df)):
+        #     subject = self.train_df.iloc[sub_idx]
+        #     label = subject['label']
+        #     if task == 'pretrain':
+        #         # captions = [subject['caption']]
+        #         captions = subject['caption'].split('.')
+        #         total_captions = []
+        #         for caption in captions:
+        #             if len(caption) < 3:
+        #                 continue
+        #             total_captions.append(caption)
+        #         len_sentence = len(total_captions)
+        #         len_choice = min(len_sentence, 10)
+        #         selected_captions = random.sample(total_captions, len_choice)
+        #         selected_captions = '.'.join(selected_captions)
+        #     elif task == 'generation':
+        #         selected_captions = subject['caption']
+        #
+        #     if len(selected_captions) == 0:
+        #         continue
+        #     self.ann.append({'image': subject['image'], 'caption': selected_captions})
 
         self.max_words = max_words
         self.transforms = transforms
 
     def __len__(self):
-        return len(self.ann)
+        return len(self.index_mapping)
+
+    def _resize_img(self, img, scale):
+        """
+        Args:
+            img - image as numpy array (cv2)
+            scale - desired output image-size as scale x scale
+        Return:
+            image resized to scale x scale with shortest dimension 0-padded
+        """
+        size = img.shape
+        max_dim = max(size)
+        max_ind = size.index(max_dim)
+
+        # Resizing
+        if max_ind == 0:
+            # image is heigher
+            wpercent = scale / float(size[0])
+            hsize = int((float(size[1]) * float(wpercent)))
+            desireable_size = (scale, hsize)
+        else:
+            # image is wider
+            hpercent = scale / float(size[1])
+            wsize = int((float(size[0]) * float(hpercent)))
+            desireable_size = (wsize, scale)
+        resized_img = cv2.resize(
+            img, desireable_size[::-1], interpolation=cv2.INTER_AREA
+        )  # this flips the desireable_size vector
+
+        # Padding
+        if max_ind == 0:
+            # height fixed at scale, pad the width
+            pad_size = scale - resized_img.shape[1]
+            left = int(np.floor(pad_size / 2))
+            right = int(np.ceil(pad_size / 2))
+            top = int(0)
+            bottom = int(0)
+        else:
+            # width fixed at scale, pad the height
+            pad_size = scale - resized_img.shape[0]
+            top = int(np.floor(pad_size / 2))
+            bottom = int(np.ceil(pad_size / 2))
+            left = int(0)
+            right = int(0)
+        resized_img = np.pad(
+            resized_img, [(top, bottom), (left, right)], "constant", constant_values=0
+        )
+
+        return resized_img
 
     def get_pred_ratio(self):
         if hasattr(self, 'epoch') and self.epoch < self.pred_start_epoch:
@@ -108,15 +169,24 @@ class ImageFolderMask(Dataset):
     def set_epoch(self, epoch):
         self.epoch = epoch
 
-    def __getitem__(self, index):
-        ann = self.ann[index]
+    def __getitem__(self, mapping_idx):
+        # ann = self.ann[index]
+        index = self.index_mapping[mapping_idx]
 
-        image_path = self.ann[index]['image']
-        image = Image.open(image_path).convert('RGB')
+        image = self.img_dset[index]
+
+        # image_path = self.ann[index]['image']
+        # image = cv2.imread(str(image_path), 0)
+
+        image = self._resize_img(image, 224)
+        image = Image.fromarray(image).convert('RGB')
         output = self.transforms(image)  # jinyu
 
-        caption = ann['caption'].replace('.', '. ')
-        caption = pre_caption(caption, self.max_words) + '.'
+        findings = self.df.iloc[index].findings
+        impression = self.df.iloc[index].impression
+
+        findings = pre_caption(findings, self.max_words)
+        impression = pre_caption(impression, self.max_words)
 
         masks = []
         for idx, img in enumerate(output):
@@ -185,7 +255,12 @@ class ImageFolderMask(Dataset):
 
             masks.append(mask)
 
-        return output, caption, masks, ann['image']
+        if findings == 'none':
+            findings = None
+        if impression == 'none':
+            impression = None
+
+        return output, masks, findings, impression
 
 
 class Re_eval_ImageFolder(Dataset):
@@ -262,9 +337,59 @@ class Re_eval_ImageFolder(Dataset):
     def __len__(self):
         return len(self.image)
 
+    def _resize_img(self, img, scale):
+        """
+        Args:
+            img - image as numpy array (cv2)
+            scale - desired output image-size as scale x scale
+        Return:
+            image resized to scale x scale with shortest dimension 0-padded
+        """
+        size = img.shape
+        max_dim = max(size)
+        max_ind = size.index(max_dim)
+
+        # Resizing
+        if max_ind == 0:
+            # image is heigher
+            wpercent = scale / float(size[0])
+            hsize = int((float(size[1]) * float(wpercent)))
+            desireable_size = (scale, hsize)
+        else:
+            # image is wider
+            hpercent = scale / float(size[1])
+            wsize = int((float(size[0]) * float(hpercent)))
+            desireable_size = (wsize, scale)
+        resized_img = cv2.resize(
+            img, desireable_size[::-1], interpolation=cv2.INTER_AREA
+        )  # this flips the desireable_size vector
+
+        # Padding
+        if max_ind == 0:
+            # height fixed at scale, pad the width
+            pad_size = scale - resized_img.shape[1]
+            left = int(np.floor(pad_size / 2))
+            right = int(np.ceil(pad_size / 2))
+            top = int(0)
+            bottom = int(0)
+        else:
+            # width fixed at scale, pad the height
+            pad_size = scale - resized_img.shape[0]
+            top = int(np.floor(pad_size / 2))
+            bottom = int(np.ceil(pad_size / 2))
+            left = int(0)
+            right = int(0)
+        resized_img = np.pad(
+            resized_img, [(top, bottom), (left, right)], "constant", constant_values=0
+        )
+
+        return resized_img
+
     def __getitem__(self, index):
         image_path = self.ann[index]['image']
-        image = Image.open(image_path).convert('RGB')
+        image = cv2.imread(str(image_path), 0)
+        image = self._resize_img(image, 224)
+        image = Image.fromarray(image).convert('RGB')
         output = self.transforms(image)  # jinyu
 
         caption = self.ann[index]['caption'].replace('.', '. ')
@@ -634,11 +759,61 @@ class Gen_Vqa_dataset(Dataset):
     def __len__(self):
         return len(self.ann)
 
+    def _resize_img(self, img, scale):
+        """
+        Args:
+            img - image as numpy array (cv2)
+            scale - desired output image-size as scale x scale
+        Return:
+            image resized to scale x scale with shortest dimension 0-padded
+        """
+        size = img.shape
+        max_dim = max(size)
+        max_ind = size.index(max_dim)
+
+        # Resizing
+        if max_ind == 0:
+            # image is heigher
+            wpercent = scale / float(size[0])
+            hsize = int((float(size[1]) * float(wpercent)))
+            desireable_size = (scale, hsize)
+        else:
+            # image is wider
+            hpercent = scale / float(size[1])
+            wsize = int((float(size[0]) * float(hpercent)))
+            desireable_size = (wsize, scale)
+        resized_img = cv2.resize(
+            img, desireable_size[::-1], interpolation=cv2.INTER_AREA
+        )  # this flips the desireable_size vector
+
+        # Padding
+        if max_ind == 0:
+            # height fixed at scale, pad the width
+            pad_size = scale - resized_img.shape[1]
+            left = int(np.floor(pad_size / 2))
+            right = int(np.ceil(pad_size / 2))
+            top = int(0)
+            bottom = int(0)
+        else:
+            # width fixed at scale, pad the height
+            pad_size = scale - resized_img.shape[0]
+            top = int(np.floor(pad_size / 2))
+            bottom = int(np.ceil(pad_size / 2))
+            left = int(0)
+            right = int(0)
+        resized_img = np.pad(
+            resized_img, [(top, bottom), (left, right)], "constant", constant_values=0
+        )
+
+        return resized_img
+
     def __getitem__(self, index):
 
         ann = self.ann[index]
         image_path = ann['image']
-        image = Image.open(image_path).convert('RGB')
+        image = cv2.imread(str(image_path), 0)
+        image = self._resize_img(image, 224)
+        image = Image.fromarray(image).convert('RGB')
         output = self.transforms(image)  # jinyu
 
         if self.split == 'test':

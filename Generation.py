@@ -17,6 +17,8 @@ import datetime
 import json
 from pathlib import Path
 
+from utils import save_result
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -24,9 +26,10 @@ from torch.utils.data import DataLoader
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
 
-from models.model_generation import XVLModel, XVLModel_infer
+from models.model_generation import XVLModel
 from models.vit import interpolate_pos_embed
 from models.tokenization_bert import BertTokenizer
+from dataset.utils import pre_caption, pre_question
 
 import utils
 from dataset import create_dataset, create_sampler, create_loader, gen_collate_fn
@@ -44,57 +47,34 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=50, fmt='{value:.6f}'))
     metric_logger.add_meter('loss_mlm', utils.SmoothedValue(window_size=50, fmt='{value:.4f}'))
-    metric_logger.add_meter('loss_ita', utils.SmoothedValue(window_size=50, fmt='{value:.4f}'))
-    metric_logger.add_meter('loss_itm', utils.SmoothedValue(window_size=50, fmt='{value:.4f}'))
-    metric_logger.add_meter('loss_ibot', utils.SmoothedValue(window_size=50, fmt='{value:.4f}'))
 
     header = 'Train Epoch: [{}]'.format(epoch)
     print_freq = 50
     step_size = 100
     warmup_iterations = warmup_steps * step_size
 
-    # define iBOT loss
-    same_dim = config['shared_head'] or config['shared_head_teacher']
-    ibot_loss = iBOTLoss(
-        config['out_dim'],
-        config['out_dim'] if same_dim else config['patch_out_dim'],
-        config['global_crops_number'],
-        config['local_crops_number'],
-        config['warmup_teacher_temp'],
-        config['teacher_temp'],
-        config['warmup_teacher_patch_temp'],
-        config['teacher_patch_temp'],
-        config['warmup_teacher_temp_epochs'],
-        config['schedular']['epochs'],
-        lambda1=config['lambda1'],
-        lambda2=config['lambda2'],
-        mim_start_epoch=config['pred_start_epoch'],
-    ).cuda()
-
     if args.distributed:
         data_loader.sampler.set_epoch(epoch)
 
-    for i, (images, text, masks, label) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for i, (image, text, index) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
 
         optimizer.zero_grad()
 
-        images = [im.cuda(non_blocking=True) for im in images]
-        masks = [msk.cuda(non_blocking=True) for msk in masks]
+        image = image.to(device)
 
-        text_input = tokenizer(text, padding='longest', truncation=True, max_length=120, return_tensors="pt").to(device)
+        text_input = tokenizer(text, padding='longest', truncation=True, max_length=180, return_tensors="pt").to(device)
 
         if epoch > 0:
             alpha = config['alpha']
         else:
             alpha = config['alpha'] * min(1, i / len(data_loader))
 
-            # calculate iteration
+        # calculate iteration
         it = len(data_loader) * epoch + i
 
-        loss_mlm, loss_ita, loss_itm, loss_ibot = model(it, images, text_input, masks, label, ibot_loss, epoch,
-                                                        fp16_scaler, alpha=alpha)
+        loss_mlm = model(image, text_input, train=True)
 
-        loss = loss_mlm + loss_ita + loss_itm + loss_ibot
+        loss = loss_mlm
 
         param_norms = None
         if fp16_scaler is None:
@@ -115,9 +95,6 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
             fp16_scaler.update()
 
         metric_logger.update(loss_mlm=loss_mlm.item())
-        metric_logger.update(loss_ita=loss_ita.item())
-        metric_logger.update(loss_itm=loss_itm.item())
-        metric_logger.update(loss_ibot=loss_ibot.item())
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
 
         if epoch == 0 and i % step_size == 0 and i <= warmup_iterations:
@@ -133,30 +110,34 @@ def evaluation(model, data_loader, tokenizer, device, config):
     model.eval()
 
     metric_logger = utils.MetricLogger(delimiter="  ")
-    header = 'Generate Generation test result:'
-    print_freq = 50
+    header = 'Generate VQA test result:'
+    print_freq = 10
 
-    results = {}
+    result = []
 
-    bos_token = config['bos_token']
+    answer_input = None
+    for n, batch in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
 
-    for n, (image, caption, image_path) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
-        image = image.to(device, non_blocking=True)
-        candidates = model(device, image, bos_token, train=False, k=config['k_test'])
+        image = batch[0].to(device)
+        text = batch[1]
+        index = batch[2]
 
-        if config['search'] == 'greedy':
-            sentences = tokenizer.decode(candidates[0])
-            results[image_path[0]] = {'caption': caption, 'predicted': sentences}
+        # load caption
+        caption = []
+        for txt in text:
+            caption.append(pre_caption(txt, max_words=180))
 
-        elif config['search'] == 'beam':
-            sentences = []
-            for candidate in candidates[0]:
-                candidate = tokenizer.decode(candidate[0])
-                sentences.append(candidate)
+        object_labels = ["" for i in range(len(image))]
+        gold_caption = caption
 
-            results[image_path[0]] = {'caption': caption, 'predicted': sentences[-1]}
+        topk_ids, topk_probs = model(image, train=False)
 
-    return results
+        for topk_id, topk_prob, gold_caption_list in zip(topk_ids, topk_probs, gold_caption):
+            ans = tokenizer.decode(topk_id[0]).replace("[SEP]", "").replace("[CLS]", "").replace("[PAD]", "").strip()
+            result.append({"pred_caption" :ans, "gold_caption" :gold_caption_list})
+            if n % 100 == 0:
+                print("pred_caption : {} / gold_caption: {}".format(ans, gold_caption_list))
+    return result
 
 def main(args, config):
     utils.init_distributed_mode(args)
@@ -180,19 +161,6 @@ def main(args, config):
 
     #### Dataset ####
     print("Creating Generation dataset")
-    datasets = [create_dataset('pretrain', config)]
-
-    if args.distributed:
-        num_tasks = utils.get_world_size()
-        global_rank = utils.get_rank()
-        samplers = create_sampler(datasets, [True], num_tasks, global_rank)
-    else:
-        samplers = [None]
-
-    data_loader = \
-    create_loader(datasets, samplers, batch_size=[config['batch_size_train']], num_workers=[4], is_trains=[True],
-                  collate_fns=[None])[0]
-
     datasets = create_dataset('gen', config)
 
     if args.distributed:
@@ -202,20 +170,18 @@ def main(args, config):
     else:
         samplers = [None, None]
 
-    _, test_loader = create_loader(datasets, samplers,
+    data_loader, test_loader = create_loader(datasets, samplers,
                                               batch_size=[config['batch_size_train'], config['batch_size_test']],
                                               num_workers=[4, 4], is_trains=[True, False],
-                                              collate_fns=[gen_collate_fn, None])
+                                              collate_fns=[None, None])
 
     # tokenizer = BertTokenizer.from_pretrained(args.text_encoder)
-    tokenizer = AutoTokenizer.from_pretrained("./my_tokenizer/")
+    # tokenizer = AutoTokenizer.from_pretrained("./my_tokenizer/")
+    tokenizer = AutoTokenizer.from_pretrained("emilyalsentzer/Bio_ClinicalBERT")
 
     #### Model ####
     print("Creating model")
-    if not args.evaluate:
-        model = XVLModel(data_loader, config=config, text_encoder=args.text_encoder, tokenizer=tokenizer, init_deit=True)
-    else:
-        model = XVLModel_infer(config=config, text_encoder=args.text_encoder, tokenizer=tokenizer)
+    model = XVLModel(data_loader, config=config, text_encoder=args.text_encoder, tokenizer=tokenizer, init_deit=True)
 
     model = model.to(device)
 
@@ -228,24 +194,24 @@ def main(args, config):
         if not args.evaluate:
             checkpoint = torch.load(args.checkpoint, map_location='cpu')
             state_dict = checkpoint['model']
-            model.load_state_dict(state_dict)
-            print('load checkpoint from %s' % args.checkpoint)
-        else:
-            checkpoint = torch.load(args.checkpoint, map_location='cpu')
-            state_dict = checkpoint['model']
+            # model.load_state_dict(state_dict)
+            # print('load checkpoint from %s' % args.checkpoint)
+
             pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder.backbone.pos_embed'],
                                                        model.visual_encoder)
             state_dict['visual_encoder.backbone.pos_embed'] = pos_embed_reshaped
+            if config['distill']:
+                m_pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder_m.backbone.pos_embed'],
+                                                             model.visual_encoder_m)
+                state_dict['visual_encoder_m.backbone.pos_embed'] = m_pos_embed_reshaped
             state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
 
-            if config['distill']:
-                m_pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder_m.pos_embed'],
-                                                             model.visual_encoder_m)
-                state_dict['visual_encoder_m.pos_embed'] = m_pos_embed_reshaped
-
-            msg = model.load_state_dict(state_dict, strict=False)
-            print('load checkpoint from %s' % args.checkpoint)
-            print(msg)
+        else:
+            checkpoint = torch.load(args.checkpoint, map_location='cpu')
+            state_dict = checkpoint['model']
+        msg = model.load_state_dict(state_dict, strict=False)
+        print('load checkpoint from %s' % args.checkpoint)
+        print(msg)
 
     if config['distill']:
         model.copy_params()
@@ -258,6 +224,8 @@ def main(args, config):
 
     print("Start training")
     start_time = time.time()
+    vqa_result = evaluation(model, test_loader, tokenizer, device, config)
+    result_file = save_result(vqa_result, args.result_dir, 'vqa_result_initial')
 
     for epoch in range(start_epoch, max_epoch):
         if args.evaluate:
@@ -268,6 +236,10 @@ def main(args, config):
 
         train_stats = train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, config,
                             fp16_scaler)
+
+        vqa_result = evaluation(model, test_loader, tokenizer, device, config)
+        result_file = save_result(vqa_result, args.result_dir, 'vqa_result_epoch%d' % epoch)
+
         if utils.is_main_process():
             log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
                          'epoch': epoch,
@@ -279,7 +251,7 @@ def main(args, config):
                 'config': config,
                 'epoch': epoch,
             }
-            torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_%02d.pth' % epoch))
+            torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint.pth'))
 
             with open(os.path.join(args.output_dir, "log.txt"), "a") as f:
                 f.write(json.dumps(log_stats) + "\n")
@@ -287,7 +259,7 @@ def main(args, config):
         dist.barrier()
 
     generation_results = evaluation(model, test_loader, tokenizer, device, config)
-    with open('./gen_{}.json'.format(args.output_dir.split('/')[-3], config['dataset']), 'w') as f:
+    with open('./gen_final.json', 'w') as f:
         json.dump(generation_results, f)
 
     total_time = time.time() - start_time
@@ -297,7 +269,7 @@ def main(args, config):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', default='./configs/Pretrain.yaml')
+    parser.add_argument('--config', default='./configs/Generation.yaml')
     parser.add_argument('--checkpoint', default='')
     parser.add_argument('--evaluate', action='store_true')
     parser.add_argument('--resume', default=False, type=bool)
@@ -310,6 +282,10 @@ if __name__ == '__main__':
     parser.add_argument('--distributed', default=True, type=bool)
 
     args = parser.parse_args()
+
+    args.result_dir = os.path.join(args.output_dir, 'result')
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+    Path(args.result_dir).mkdir(parents=True, exist_ok=True)
 
     config = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)
 

@@ -1,8 +1,4 @@
-dataset: 'mimic'
-
-train_file: [
-            '/home/depecher/PycharmProjects/TCL_local/data/mimic/Train.jsonl'
-            ]
+train_file: ['/COVID_8TB/sangjoon/mimic_CXR/cxr.h5', '/COVID_8TB/sangjoon/mimic_CXR/mimic_impressions_final.csv']
 val_file: '/home/depecher/PycharmProjects/TCL_local/data/mimic/Valid.jsonl'
 test_file: '/home/depecher/PycharmProjects/TCL_local/data/mimic/Test.jsonl'
 
@@ -51,5 +47,5 @@ freeze_last_layer: 1
 global_crops_scale: [0.5, 1.0]
 local_crops_scale: [0.2, 0.5]
 global_crops_number: 2
-local_crops_number: 8
+local_crops_number: 4
 

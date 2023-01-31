@@ -168,6 +168,7 @@ class VisionTransformer(nn.Module):
         self.fc_norm = norm_layer(embed_dim) if use_mean_pooling else None
         # Classifier head
         self.head = nn.Linear(embed_dim, num_classes) if num_classes > 0 else nn.Identity()
+        self.proj = nn.Linear(384, 768)
 
         trunc_normal_(self.pos_embed, std=.02)
         trunc_normal_(self.cls_token, std=.02)
@@ -242,6 +243,8 @@ class VisionTransformer(nn.Module):
         x = self.norm(x)
         if self.fc_norm is not None:
             x[:, 0] = self.fc_norm(x[:, 1:, :].mean(1))
+
+        x = self.proj(x)
 
         return_all_tokens = self.return_all_tokens if \
             return_all_tokens is None else return_all_tokens

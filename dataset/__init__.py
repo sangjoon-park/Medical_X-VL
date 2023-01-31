@@ -38,7 +38,6 @@ def create_dataset(dataset, config):
     if dataset == 'pretrain':
         patch_size = config['patch_size']
         dataset= ImageFolderMask(
-            config['task'],
             config['train_file'],
             patch_size=patch_size,
             pred_ratio=config['pred_ratio'],

@@ -34,24 +34,13 @@ class XVLModel(nn.Module):
                  tokenizer=None,
                  config=None,
                  temp=0.07,
-                 init_deit=True
                  ):
         super().__init__()
 
         self.config = config
-        self.data_loader = data_loader
         self.tokenizer = tokenizer
         self.mlm_probability = config['mlm_probability']
         embed_dim = config['embed_dim']
-
-        # MeSH keyword weighting
-        with open('./my_tokenizer/mesh.txt') as f:
-            lines = f.readlines()
-        processed_lines = []
-        for line in lines:
-            line = line.replace('\n', '')
-            processed_lines.append(int(line))
-        self.mesh = processed_lines
 
         visual_encoder = vit_small(
             img_size=(config['image_res'], config['image_res']),
@@ -82,7 +71,10 @@ class XVLModel(nn.Module):
         vision_width = config['vision_width']
         bert_config = BertConfig.from_json_file(config['bert_config'])
 
-        self.text_encoder = BertForMaskedLM(config=bert_config)
+        url = "microsoft/BiomedVLP-CXR-BERT-specialized"
+
+        # self.text_encoder = BertForMaskedLM(config=bert_config)
+        self.text_encoder = BertForMaskedLM.from_pretrained(url, trust_remote_code=True, config=bert_config)
 
         text_width = self.text_encoder.config.hidden_size
         self.vision_proj = nn.Linear(vision_width, embed_dim)
@@ -114,7 +106,7 @@ class XVLModel(nn.Module):
 
         self.vision_proj_m = nn.Linear(vision_width, embed_dim)
 
-        self.text_encoder_m = BertForMaskedLM(config=bert_config)
+        self.text_encoder_m = BertForMaskedLM.from_pretrained(url, trust_remote_code=True, config=bert_config)
         self.text_proj_m = nn.Linear(text_width, embed_dim)
 
         self.model_pairs = [
@@ -137,8 +129,20 @@ class XVLModel(nn.Module):
         self.momentum_schedule = ibot_utils.cosine_scheduler(config['momentum'], 1,
                                                              config['schedular']['epochs'], len(data_loader))
 
-    def forward(self, images, text, masks, ibot_loss, epoch, fp16_scaler, alpha=0):
+    def forward(self, images, findings, impression, masks, ibot_loss, epoch, fp16_scaler, alpha=0):
         bs = images[0].size(0)
+        
+        flag_fnd = 0
+        flag_imp = 0
+        
+        # Check either finding and impression exists
+        if findings:
+            flag_fnd = 1
+        if flag_imp:
+            flag_imp = 1
+
+        fnd_feat_m = None
+        imp_feat_m = None
 
         # common params
         names_q, params_q, names_k, params_k = [], [], [], []
@@ -156,24 +160,167 @@ class XVLModel(nn.Module):
             self.temp.clamp_(0.001, 0.5)
 
         with torch.cuda.amp.autocast(fp16_scaler is not None):
-
-            text_output = self.text_encoder.bert(text.input_ids, attention_mask=text.attention_mask,
-                                                 return_dict=True, mode='text')
-            text_embeds = text_output.last_hidden_state
-            text_feat = F.normalize(self.text_proj(text_embeds[:, 0, :]), dim=-1)
+            
+            # Findings
+            if flag_fnd:
+                fnd_output = self.text_encoder.bert(findings.input_ids, attention_mask=findings.attention_mask,
+                                                     return_dict=True, mode='text')
+                fnd_embeds = fnd_output.last_hidden_state
+                fnd_feat = F.normalize(self.text_proj(fnd_embeds[:, 0, :]), dim=-1)
+            
+            # Impression
+            if flag_imp:
+                imp_output = self.text_encoder.bert(impression.input_ids, attention_mask=impression.attention_mask,
+                                                     return_dict=True, mode='text')
+                imp_embeds = imp_output.last_hidden_state
+                imp_feat = F.normalize(self.text_proj(imp_embeds[:, 0, :]), dim=-1)
 
             with torch.no_grad():
-                text_output_m = self.text_encoder_m.bert(text.input_ids, attention_mask=text.attention_mask,
-                                                         return_dict=True, mode='text')
-                text_embeds_m = text_output_m.last_hidden_state
-                text_feat_m = F.normalize(self.text_proj_m(text_embeds_m[:, 0, :]), dim=-1)
+                if flag_fnd:
+                    fnd_output_m = self.text_encoder_m.bert(findings.input_ids, attention_mask=findings.attention_mask,
+                                                             return_dict=True, mode='text')
+                    fnd_embeds_m = fnd_output_m.last_hidden_state
+                    fnd_feat_m = F.normalize(self.text_proj_m(fnd_embeds_m[:, 0, :]), dim=-1)
+
+                if flag_imp:
+                    imp_output_m = self.text_encoder_m.bert(impression.input_ids, attention_mask=impression.attention_mask,
+                                                             return_dict=True, mode='text')
+                    imp_embeds_m = imp_output_m.last_hidden_state
+                    imp_feat_m = F.normalize(self.text_proj_m(imp_embeds_m[:, 0, :]), dim=-1)
 
             # get global views -> used for ita, itm, mlm
             with torch.no_grad():
                 teacher_raw = self.visual_encoder_m(images[:self.config['global_crops_number']])
             student_raw = self.visual_encoder(images[:self.config['global_crops_number']],
                                               mask=masks[:self.config['global_crops_number']])
+            
+            # Contrastive loss
+            image_embeds_m = teacher_raw[:bs]
+            image_embeds = student_raw[:bs]
 
+            image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(images[0].device)
+
+            image_feat = F.normalize(self.vision_proj(image_embeds[:, 0, :]), dim=-1)
+
+            with torch.no_grad():
+                # other models momentum update
+                self._momentum_update()
+
+                # student and teacher momentum update
+                m = self.config['momentum']
+                for param_q, param_k in zip(params_q, params_k):
+                    param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
+
+                image_feat_m = F.normalize(self.vision_proj_m(image_embeds_m[:, 0, :]), dim=-1)
+                image_feat_all = torch.cat([image_feat_m.t(), self.image_queue.clone().detach()], dim=1)
+                if flag_fnd:
+                    fnd_feat_all = torch.cat([fnd_feat_m.t(), self.fnd_queue.clone().detach()], dim=1)
+                if flag_imp:
+                    imp_feat_all = torch.cat([imp_feat_m.t(), self.imp_queue.clone().detach()], dim=1)
+
+                # image-text alignment (diagonal)
+                if flag_fnd:
+                    sim_i2f_m = image_feat_m @ fnd_feat_all / self.temp
+                    sim_f2i_m = fnd_feat_m @ image_feat_all / self.temp
+                    sim_targets = torch.zeros(sim_i2f_m.size()).to(images[0].device)
+                    sim_targets.fill_diagonal_(1)
+                    sim_i2f_targets = alpha * F.softmax(sim_i2f_m, dim=1) + (1 - alpha) * sim_targets
+                    sim_f2i_targets = alpha * F.softmax(sim_f2i_m, dim=1) + (1 - alpha) * sim_targets
+
+                if flag_imp:
+                    sim_i2p_m = image_feat_m @ imp_feat_all / self.temp
+                    sim_p2i_m = imp_feat_m @ image_feat_all / self.temp
+                    sim_targets = torch.zeros(sim_i2p_m.size()).to(images[0].device)
+                    sim_targets.fill_diagonal_(1)
+                    sim_i2p_targets = alpha * F.softmax(sim_i2p_m, dim=1) + (1 - alpha) * sim_targets
+                    sim_p2i_targets = alpha * F.softmax(sim_p2i_m, dim=1) + (1 - alpha) * sim_targets
+
+                if flag_fnd and flag_imp:
+                    sim_f2p_m = fnd_feat_m @ imp_feat_all / self.temp
+                    sim_p2f_m = imp_feat_m @ fnd_feat_all / self.temp
+                    sim_targets = torch.zeros(sim_f2p_m.size()).to(images[0].device)
+                    sim_targets.fill_diagonal_(1)
+                    sim_f2p_targets = alpha * F.softmax(sim_f2p_m, dim=1) + (1 - alpha) * sim_targets
+                    sim_p2f_targets = alpha * F.softmax(sim_p2f_m, dim=1) + (1 - alpha) * sim_targets
+
+                # # intramodal alignment (diagonal)
+                # sim_i2i_m = image_feat_m @ image_feat_all / self.temp
+                # sim_i2i_targets = alpha * F.softmax(sim_i2i_m, dim=1) + (1 - alpha) * sim_targets
+                #
+                # if flag_fnd:
+                #     sim_f2f_m = fnd_feat_m @ fnd_feat_all / self.temp
+                #     sim_f2f_targets = alpha * F.softmax(sim_f2f_m, dim=1) + (1 - alpha) * sim_targets
+                # if flag_imp:
+                #     sim_p2p_m = imp_feat_m @ imp_feat_all / self.temp
+                #     sim_p2p_targets = alpha * F.softmax(sim_p2p_m, dim=1) + (1 - alpha) * sim_targets
+
+            loss_ita = 0.
+            num_loss = 0.
+
+            if flag_fnd:
+                sim_i2f = image_feat @ fnd_feat_all / self.temp
+                sim_f2i = fnd_feat @ image_feat_all / self.temp
+                loss_i2f = -torch.sum(F.log_softmax(sim_i2f, dim=1) * sim_i2f_targets, dim=1).mean()
+                loss_f2i = -torch.sum(F.log_softmax(sim_f2i, dim=1) * sim_f2i_targets, dim=1).mean()
+                loss_ita += (loss_i2f + loss_f2i)
+                num_loss += 1
+
+            if flag_imp:
+                sim_i2p = image_feat @ imp_feat_all / self.temp
+                sim_p2i = imp_feat @ image_feat_all / self.temp
+                loss_i2p = -torch.sum(F.log_softmax(sim_i2p, dim=1) * sim_i2p_targets, dim=1).mean()
+                loss_p2i = -torch.sum(F.log_softmax(sim_p2i, dim=1) * sim_p2i_targets, dim=1).mean()
+                loss_ita += (loss_i2p + loss_p2i)
+                num_loss += 1
+
+            if flag_fnd and flag_imp:
+                sim_f2p = fnd_feat @ imp_feat_all / self.temp
+                sim_p2f = imp_feat @ fnd_feat_all / self.temp
+                loss_f2p = -torch.sum(F.log_softmax(sim_f2p, dim=1) * sim_f2p_targets, dim=1).mean()
+                loss_p2f = -torch.sum(F.log_softmax(sim_p2f, dim=1) * sim_p2f_targets, dim=1).mean()
+                loss_ita += (loss_f2p + loss_p2f)
+                num_loss += 1
+
+            # # jinyu: add in-modality g2g loss (G2G)
+            # sim_i2i = image_feat @ image_feat_all / self.temp
+            # sim_t2t = text_feat @ text_feat_all / self.temp
+
+            # loss_i2i = -torch.sum(F.log_softmax(sim_i2i, dim=1) * sim_i2i_targets, dim=1).mean()
+            # loss_t2t = -torch.sum(F.log_softmax(sim_t2t, dim=1) * sim_t2t_targets, dim=1).mean()
+
+            loss_ita /= num_loss
+
+            # Select either findings or impressions
+            if flag_fnd and flag_imp:
+                if random.random() < 0.5:
+                    text = findings
+                    text_embeds = fnd_embeds
+                    text_embeds_m = fnd_embeds_m
+                    sim_i2t = sim_i2f
+                    sim_t2i = sim_f2i
+                else:
+                    text = impression
+                    text_embeds = imp_embeds
+                    text_embeds_m = imp_embeds_m
+                    sim_i2t = sim_i2p
+                    sim_t2i = sim_p2i
+            else:
+                if flag_fnd:
+                    text = findings
+                    text_embeds = fnd_embeds
+                    text_embeds_m = fnd_embeds_m
+                    sim_i2t = sim_i2f
+                    sim_t2i = sim_f2i
+                elif flag_imp:
+                    text = impression
+                    text_embeds = imp_embeds
+                    text_embeds_m = imp_embeds_m
+                    sim_i2t = sim_i2p
+                    sim_t2i = sim_p2i
+                else:
+                    raise AssertionError()
+
+            # Calculate MIM loss
             with torch.no_grad():
                 teacher_output_ = self.text_encoder_m.bert(encoder_embeds=teacher_raw,
                                                         attention_mask=torch.ones(
@@ -219,61 +366,9 @@ class XVLModel(nn.Module):
             print("Loss is {}, stopping training".format(loss_ibot.item()), force=True)
             sys.exit(1)
 
-        image_embeds_m = teacher_raw[:bs]
-        image_embeds = student_raw[:bs]
+        self._dequeue_and_enqueue(image_feat_m, fnd_feat_m, imp_feat_m)
 
-        image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(images[0].device)
-
-        image_feat = F.normalize(self.vision_proj(image_embeds[:, 0, :]), dim=-1)
-
-        # get momentum features
-        with torch.no_grad():
-            # other models momentum update
-            self._momentum_update()
-
-            # student and teacher momentum update
-            m = self.config['momentum']
-            for param_q, param_k in zip(params_q, params_k):
-                param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
-
-            image_feat_m = F.normalize(self.vision_proj_m(image_embeds_m[:, 0, :]), dim=-1)
-            image_feat_all = torch.cat([image_feat_m.t(), self.image_queue.clone().detach()], dim=1)
-            text_feat_all = torch.cat([text_feat_m.t(), self.text_queue.clone().detach()], dim=1)
-
-            # image-text alignment (diagonal)
-            sim_i2t_m = image_feat_m @ text_feat_all / self.temp
-            sim_t2i_m = text_feat_m @ image_feat_all / self.temp
-
-            sim_targets = torch.zeros(sim_i2t_m.size()).to(images[0].device)
-            sim_targets.fill_diagonal_(1)
-
-            sim_i2t_targets = alpha * F.softmax(sim_i2t_m, dim=1) + (1 - alpha) * sim_targets
-            sim_t2i_targets = alpha * F.softmax(sim_t2i_m, dim=1) + (1 - alpha) * sim_targets
-
-            # intramodal alignment (diagonal)
-            sim_i2i_m = image_feat_m @ image_feat_all / self.temp
-            sim_t2t_m = text_feat_m @ text_feat_all / self.temp
-
-            sim_i2i_targets = alpha * F.softmax(sim_i2i_m, dim=1) + (1 - alpha) * sim_targets
-            sim_t2t_targets = alpha * F.softmax(sim_t2t_m, dim=1) + (1 - alpha) * sim_targets
-
-        sim_i2t = image_feat @ text_feat_all / self.temp
-        sim_t2i = text_feat @ image_feat_all / self.temp
-
-        loss_i2t = -torch.sum(F.log_softmax(sim_i2t, dim=1) * sim_i2t_targets, dim=1).mean()
-        loss_t2i = -torch.sum(F.log_softmax(sim_t2i, dim=1) * sim_t2i_targets, dim=1).mean()
-
-        # jinyu: add in-modality g2g loss (G2G)
-        sim_i2i = image_feat @ image_feat_all / self.temp
-        sim_t2t = text_feat @ text_feat_all / self.temp
-
-        loss_i2i = -torch.sum(F.log_softmax(sim_i2i, dim=1) * sim_i2i_targets, dim=1).mean()
-        loss_t2t = -torch.sum(F.log_softmax(sim_t2t, dim=1) * sim_t2t_targets, dim=1).mean()
-
-        loss_ita = (loss_i2t + loss_t2i + loss_i2i + loss_t2t) / 4
-
-        self._dequeue_and_enqueue(image_feat_m, text_feat_m)
-
+        # calculate ITM loss
         ###=================================###
         # forward the positve image-text pair
         output_pos = self.text_encoder.bert(encoder_embeds=text_embeds,
@@ -285,6 +380,7 @@ class XVLModel(nn.Module):
                                             mode='fusion',
                                             )
 
+        # Hard negative mining
         with torch.no_grad():
             weights_i2t = F.softmax(sim_i2t[:, :bs], dim=1)
             weights_t2i = F.softmax(sim_t2i[:, :bs], dim=1)
@@ -363,11 +459,6 @@ class XVLModel(nn.Module):
         # MeSH weighted probability matrix
         probability_matrix = torch.full(labels.shape, self.mlm_probability)
 
-        for i in range(len(input_ids)):
-            for j in range(len(input_ids[i])):
-                if self.mesh[input_ids[i][j]] == 1:
-                    probability_matrix[i][j] = probability_matrix[i][j] * 6.
-
         input_ids, labels = self.mask(input_ids, self.text_encoder.config.vocab_size, images[0].device, targets=labels,
                                       probability_matrix=probability_matrix)
 
@@ -406,10 +497,13 @@ class XVLModel(nn.Module):
                 param_m.data = param_m.data * self.momentum + param.data * (1. - self.momentum)
 
     @torch.no_grad()
-    def _dequeue_and_enqueue(self, image_feat, text_feat):
+    def _dequeue_and_enqueue(self, image_feats, fnd_feats=None, imp_feats=None):
         # gather keys before updating queue
-        image_feats = concat_all_gather(image_feat)
-        text_feats = concat_all_gather(text_feat)
+        image_feats = concat_all_gather(image_feats)
+        if fnd_feats:
+            fnd_feats = concat_all_gather(fnd_feats)
+        if imp_feats:
+            imp_feats = concat_all_gather(imp_feats)
 
         batch_size = image_feats.shape[0]
 
@@ -418,7 +512,10 @@ class XVLModel(nn.Module):
 
         # replace the keys at ptr (dequeue and enqueue)
         self.image_queue[:, ptr:ptr + batch_size] = image_feats.T
-        self.text_queue[:, ptr:ptr + batch_size] = text_feats.T
+        if fnd_feats:
+            self.fnd_queue[:, ptr:ptr + batch_size] = fnd_feats.T
+        if imp_feats:
+            self.imp_queue[:, ptr:ptr + batch_size] = imp_feats.T
         ptr = (ptr + batch_size) % self.queue_size  # move pointer
 
         self.queue_ptr[0] = ptr
