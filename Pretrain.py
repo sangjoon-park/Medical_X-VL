@@ -77,14 +77,8 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
         images = [im.cuda(non_blocking=True) for im in images]
         masks = [msk.cuda(non_blocking=True) for msk in masks]
 
-        if findings:
-            fnd_input = tokenizer(findings, padding='longest', truncation=True, max_length=90, return_tensors="pt").to(device)
-        else:
-            fnd_input = None
-        if impression:
-            imp_input = tokenizer(impression, padding='longest', truncation=True, max_length=60, return_tensors="pt").to(device)
-        else:
-            imp_input = None
+        fnd_input = tokenizer(findings, padding='longest', truncation=True, max_length=90, return_tensors="pt").to(device)
+        imp_input = tokenizer(impression, padding='longest', truncation=True, max_length=60, return_tensors="pt").to(device)
 
         if epoch > 0:
             alpha = config['alpha']

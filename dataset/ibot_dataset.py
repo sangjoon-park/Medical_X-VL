@@ -45,7 +45,7 @@ class ImageFolderMask(Dataset):
             findings = self.df.iloc[i].findings
             impression = self.df.iloc[i].impression
             # view = self.df.iloc[i].view
-            if split == mode and findings != 'None' and impression != 'None':
+            if split == mode and findings != 'NONE' and impression != 'NONE' and type(findings) != float and type(impression) != float:
                 self.index_mapping.append(i)
 
         if len(self.img_dset) != len(self.df):
@@ -254,11 +254,6 @@ class ImageFolderMask(Dataset):
                     assert False
 
             masks.append(mask)
-
-        if findings == 'none':
-            findings = None
-        if impression == 'none':
-            impression = None
 
         return output, masks, findings, impression
 
