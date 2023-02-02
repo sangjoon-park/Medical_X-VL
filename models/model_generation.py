@@ -31,19 +31,16 @@ from dataset.utils import pre_caption
 
 class XVLModel(nn.Module):
     def __init__(self,
-                 data_loader,
-                 text_encoder=None,
                  tokenizer=None,
                  config=None,
-                 temp=0.07,
-                 init_deit=True
+                 temp=0.07
                  ):
         super().__init__()
 
         self.tokenizer = tokenizer
         self.distill = config['distill']
 
-        self.visual_encoder = vit_small(
+        self.visual_encoder = vit_base(
             img_size=(config['image_res'], config['image_res']),
             patch_size=config['patch_size'],
             drop_path_rate=config['drop_path'],
@@ -52,10 +49,11 @@ class XVLModel(nn.Module):
 
         bert_config = BertConfig.from_json_file(config['bert_config'])
         self.text_encoder = BertLMHeadModel(config=bert_config)
+
         self.beam_generator = TextGenerator(config, self.text_encoder)
 
         if self.distill:
-            self.visual_encoder_m = vit_small(
+            self.visual_encoder_m = vit_base(
             img_size=(config['image_res'], config['image_res']),
             patch_size=config['patch_size'],
             drop_path_rate=config['drop_path'],
@@ -69,7 +67,7 @@ class XVLModel(nn.Module):
             self.copy_params()
             self.momentum = 0.995
 
-    def forward(self, image, answer=None, train=True):
+    def forward(self, image, answer=None, train=True, alpha=0):
 
         bs = image.size(0)
 
@@ -102,6 +100,7 @@ class XVLModel(nn.Module):
                                                   return_dict=True,
                                                   is_decoder=True,
                                                   soft_labels=F.softmax(logits_m, dim=-1),
+                                                  alpha=alpha,
                                                   reduction='none',
                                                   output_hidden_states=True
                                                   )

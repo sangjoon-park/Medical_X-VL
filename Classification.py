@@ -220,8 +220,7 @@ def main(args, config):
             break
            
         lr_scheduler.step(epoch+warmup_steps+1)  
-        dist.barrier()     
-        torch.cuda.empty_cache()
+        dist.barrier()
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))

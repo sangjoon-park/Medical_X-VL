@@ -1,16 +1,10 @@
 # Data MIMIC or RSNA
-dataset: 'mimic'
-task: 'generation'
+train_file: ['/COVID_8TB/sangjoon/mimic_CXR/cxr.h5', '/COVID_8TB/sangjoon/mimic_CXR/mimic_impressions_final.csv']
+test_file: '/home/depecher/PycharmProjects/TCL_local/data/mimic/Test.jsonl'
 
-train_file: ['/home/depecher/PycharmProjects/TCL_local/data/mimic/Train.jsonl']
-test_file: ['/home/depecher/PycharmProjects/TCL_local/data/mimic/Test.jsonl']
-
-vision_width: 384
+vision_width: 768
 embed_dim: 256
-queue_size: 49152
 mlm_probability: 0.15
-
-search: 'greedy'
 
 temp: 0.07
 
@@ -24,6 +18,7 @@ alpha: 0.4
 distill: False
 warm_up: True
 
+# TOKEN number 확인할 것!
 eos: '[SEP]'
 eos_token: 3
 bos_token: 2
@@ -34,6 +29,12 @@ momentum: 0.995
 optimizer: {opt: adamW, lr: 1e-4, weight_decay: 0.02}
 schedular: {sched: cosine, lr: 1e-4, epochs: 15, min_lr: 1e-5, decay_rate: 1, warmup_lr: 1e-5, warmup_epochs: 5, cooldown_epochs: 0}
 
+beam_size: 3
+min_length: 2
+max_length: 120
+max_input_length: 120
+
+prompt: ''
 
 # iBOT specific options
 patch_size: 16
@@ -48,7 +49,7 @@ use_masked_im_modeling: True
 pred_ratio: 0.3
 pred_ratio_var: 0.
 pred_shape: 'block'
-pred_start_epoch: 0
+pred_start_epoch: 1
 lambda1: 1.0
 lambda2: 1.0
 warmup_teacher_temp: 0.04
@@ -64,6 +65,5 @@ global_crops_scale: [0.5, 1.0]
 local_crops_scale: [0.2, 0.5]
 global_crops_number: 2
 local_crops_number: 8
-
 
 

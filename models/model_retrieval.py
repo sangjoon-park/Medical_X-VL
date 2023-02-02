@@ -11,19 +11,17 @@ from models.vit import VisionTransformer as VisionTransformer_deit
 
 class XVLModel(nn.Module):
     def __init__(self,
-                 train_loader,
                  tokenizer = None,
                  config = None,
                  ):
         super().__init__()
 
-        self.train_loader = train_loader
         self.tokenizer = tokenizer
         self.distill = config['distill']
         embed_dim = config['embed_dim']
         vision_width = config['vision_width']
 
-        visual_encoder = vit_small(
+        visual_encoder = vit_base(
             img_size=(config['image_res'], config['image_res']),
             patch_size=config['patch_size'],
             drop_path_rate=config['drop_path'],
@@ -45,7 +43,7 @@ class XVLModel(nn.Module):
         self.itm_head_v = nn.Linear(text_width, 2)
 
         # create momentum models
-        visual_encoder_m = vit_small(
+        visual_encoder_m = vit_base(
             img_size=(config['image_res'], config['image_res']),
             patch_size=config['patch_size'],
             return_all_tokens=True,
@@ -65,12 +63,13 @@ class XVLModel(nn.Module):
 
         # create the queue
         self.register_buffer("image_queue", torch.randn(embed_dim, self.queue_size))
-        self.register_buffer("text_queue", torch.randn(embed_dim, self.queue_size))
-        self.register_buffer("idx_queue", torch.full((1,self.queue_size),-100))
+        self.register_buffer("fnd_queue", torch.randn(embed_dim, self.queue_size))
+        self.register_buffer("imp_queue", torch.randn(embed_dim, self.queue_size))
         self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
 
         self.image_queue = nn.functional.normalize(self.image_queue, dim=0)
-        self.text_queue = nn.functional.normalize(self.text_queue, dim=0)
+        self.fnd_queue = nn.functional.normalize(self.fnd_queue, dim=0)
+        self.imp_queue = nn.functional.normalize(self.imp_queue, dim=0)
 
 
     def forward(self, image, text, label, alpha, fp16_scaler, n, idx):

@@ -10,21 +10,10 @@ from dataset.randaugment import RandomAugment
 from dataset.utils import GaussianBlur
 
 from ibot_utils import DataAugmentationiBOT, NoAugmentationiBOT, FineAugmentationiBOT
-from dataset.ibot_dataset import ImageFolderMask, Re_eval_ImageFolder, Re_train_ImageFolder, Gen_eval_ImageFolder, Gen_train_ImageFolder, Vqa_dataset, Gen_Vqa_dataset
-from dataset.ibot_dataset import Cls_COVID
-from dataset.ibot_dataset import Det_train_ImageFolder, Det_eval_ImageFolder
+from dataset.ibot_dataset import ImageFolderMask, Retrieval_dataset, Gen_dataset, Cls_dataset, Vqa_dataset
 
 
 def create_dataset(dataset, config):
-    train_transform = transforms.Compose([
-        transforms.RandomResizedCrop(config['image_res'], scale=(0.85, 1.0), interpolation=Image.BICUBIC),
-        transforms.RandomApply([GaussianBlur([.1, 1.])], p=0.5),
-        transforms.RandomHorizontalFlip(),
-        RandomAugment(1, 1, isPIL=True, augs=['Identity', 'AutoContrast', 'Equalize', 'Brightness', 'Sharpness',
-                                              'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
-        transforms.ToTensor(),
-    ])
-
     ibot_transform = DataAugmentationiBOT(
         config['global_crops_scale'],
         config['local_crops_scale'],
@@ -49,24 +38,21 @@ def create_dataset(dataset, config):
             )
         return dataset
 
-    elif dataset == 'gen':
-        train_dataset = Gen_Vqa_dataset(config['train_file'], finetune_transform, split='train')
-        vqa_test_dataset = Gen_Vqa_dataset(config['test_file'], test_transform, split='test')
-        return train_dataset, vqa_test_dataset
+    elif dataset == 'cls':
+        train_dataset = Cls_dataset(config['train'], transforms=finetune_transform)
+        # val_dataset = Cls_dataset(config['validation'], transforms=test_transform)
+        test_dataset = Cls_dataset(config['test'], transforms=test_transform)
+        return train_dataset, test_dataset
 
-    elif dataset == 're':
-        patch_size = config['patch_size']
-        train_dataset = Re_train_ImageFolder(config['train_file'], patch_size, transforms=finetune_transform)
-        val_dataset = Re_eval_ImageFolder(config['val_file'], patch_size, transforms=test_transform)
-        test_dataset = Re_eval_ImageFolder(config['test_file'], patch_size, transforms=test_transform)
-        return train_dataset, val_dataset, test_dataset
+    elif dataset == 'retrieval':
+        test_dataset = Retrieval_dataset(config['candidate_file'], config['query_file'], transforms=test_transform)
+        return test_dataset
 
-    elif dataset == 'det':
-        patch_size = config['patch_size']
-        train_dataset = Det_train_ImageFolder(config['train_file'], patch_size, transforms=finetune_transform)
-        val_dataset = Det_eval_ImageFolder(config['mode'], config['val_file'], patch_size, transforms=test_transform)
-        test_dataset = Det_eval_ImageFolder(config['mode'], config['test_file'], patch_size, transforms=test_transform)
-        return train_dataset, val_dataset, test_dataset
+    elif dataset == 'generation':
+        train_dataset = Gen_dataset(config['train_file'], finetune_transform, mode='train')
+        # val_dataset = Gen_dataset(config['val_file'], test_transform, mode='test')
+        test_dataset = Gen_dataset(config['train_file'], test_transform, mode='test')
+        return train_dataset, test_dataset
 
     elif dataset == 'vqa':
         train_dataset = Vqa_dataset(config['train_file'], finetune_transform, config['vqa_root'], config['vg_root'],
@@ -74,13 +60,6 @@ def create_dataset(dataset, config):
         vqa_test_dataset = Vqa_dataset(config['test_file'], test_transform, config['vqa_root'], config['vg_root'],
                                        split='test', answer_list=config['answer_list'], chest_only=config['chest_only'])
         return train_dataset, vqa_test_dataset
-
-    elif dataset == 'cls':
-        patch_size = config['patch_size']
-        train_dataset = Cls_COVID(config['covid_train'], config['partial'], patch_size, transforms=finetune_transform)
-        val_dataset = Cls_COVID(config['covid_test'], False, patch_size, transforms=test_transform)
-        test_dataset = Cls_COVID(config['covid_test'], False, patch_size, transforms=test_transform)
-        return train_dataset, val_dataset, test_dataset
 
 
 def gen_collate_fn(batch):
@@ -133,8 +112,8 @@ def create_loader(datasets, samplers, batch_size, num_workers, is_trains, collat
             drop_last = True
         else:
             sampler = None
-            shuffle = True
-            drop_last = True
+            shuffle = False
+            drop_last = False
         loader = DataLoader(
             dataset,
             batch_size=bs,

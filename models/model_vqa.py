@@ -12,8 +12,6 @@ import numpy as np
 
 class XVLModel(nn.Module):
     def __init__(self,
-                 text_encoder=None,
-                 text_decoder=None,
                  tokenizer=None,
                  config=None,
                  ):
@@ -22,7 +20,7 @@ class XVLModel(nn.Module):
         self.tokenizer = tokenizer
         self.distill = config['distill']
 
-        visual_encoder = vit_small(
+        visual_encoder = vit_base(
             img_size=(config['image_res'], config['image_res']),
             patch_size=config['patch_size'],
             drop_path_rate=config['drop_path'],
@@ -39,7 +37,7 @@ class XVLModel(nn.Module):
         self.text_decoder = BertLMHeadModel(config=config_decoder)
 
         if self.distill:
-            visual_encoder_m = vit_small(
+            visual_encoder_m = vit_base(
                 img_size=(config['image_res'], config['image_res']),
                 patch_size=config['patch_size'],
                 return_all_tokens=True,
@@ -111,6 +109,7 @@ class XVLModel(nn.Module):
                                                   labels=answer_targets,
                                                   return_dict=True,
                                                   soft_labels=F.softmax(logits_m, dim=-1),
+                                                  alpha=alpha,
                                                   reduction='none',
                                                   )
             else:

@@ -17,7 +17,8 @@ import datetime
 import json
 from pathlib import Path
 
-from utils import save_result
+import language_evaluation
+from dataset.utils import save_result
 
 import torch
 import torch.nn as nn
@@ -38,6 +39,7 @@ from optim import create_optimizer
 from ibot_utils import iBOTLoss
 from transformers import AutoTokenizer
 import ibot_utils
+from eval_function import COCOEvalCapDirect
 
 
 def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device, scheduler, config, fp16_scaler):
@@ -56,11 +58,12 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     if args.distributed:
         data_loader.sampler.set_epoch(epoch)
 
-    for i, (image, text, index) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for i, (image, findings, image_id) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
 
         optimizer.zero_grad()
 
         image = image.to(device)
+        text = findings
 
         text_input = tokenizer(text, padding='longest', truncation=True, max_length=180, return_tensors="pt").to(device)
 
@@ -69,10 +72,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
         else:
             alpha = config['alpha'] * min(1, i / len(data_loader))
 
-        # calculate iteration
-        it = len(data_loader) * epoch + i
-
-        loss_mlm = model(image, text_input, train=True)
+        loss_mlm = model(image, text_input, train=True, alpha=alpha)
 
         loss = loss_mlm
 
@@ -110,7 +110,7 @@ def evaluation(model, data_loader, tokenizer, device, config):
     model.eval()
 
     metric_logger = utils.MetricLogger(delimiter="  ")
-    header = 'Generate VQA test result:'
+    header = 'Generate test set result:'
     print_freq = 10
 
     result = []
@@ -119,13 +119,14 @@ def evaluation(model, data_loader, tokenizer, device, config):
     for n, batch in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
 
         image = batch[0].to(device)
-        text = batch[1]
-        index = batch[2]
+        report = batch[1]
+        ID = batch[2][0]
+        text = report
 
         # load caption
         caption = []
         for txt in text:
-            caption.append(pre_caption(txt, max_words=180))
+            caption.append(pre_caption(txt, max_words=120))
 
         object_labels = ["" for i in range(len(image))]
         gold_caption = caption
@@ -134,10 +135,23 @@ def evaluation(model, data_loader, tokenizer, device, config):
 
         for topk_id, topk_prob, gold_caption_list in zip(topk_ids, topk_probs, gold_caption):
             ans = tokenizer.decode(topk_id[0]).replace("[SEP]", "").replace("[CLS]", "").replace("[PAD]", "").strip()
-            result.append({"pred_caption" :ans, "gold_caption" :gold_caption_list})
-            if n % 100 == 0:
+            result[ID] = {"predicted": ans, "caption": gold_caption_list}
+
+            if n % 20 == 0:
                 print("pred_caption : {} / gold_caption: {}".format(ans, gold_caption_list))
     return result
+
+def cal_metric(result_file):
+    result_list = json.load(open(result_file, "r"))
+    predicts = []
+    answers = []
+    for each in result_list:
+        predicts.append(each["pred_caption"])
+        answers.append(each["gold_caption"])
+    evaluator = language_evaluation.CocoEvaluator(verbose=False)
+    results = evaluator.run_evaluation(predicts, answers)
+    print (len(result_list), results)
+    return results
 
 def main(args, config):
     utils.init_distributed_mode(args)
@@ -161,7 +175,7 @@ def main(args, config):
 
     #### Dataset ####
     print("Creating Generation dataset")
-    datasets = create_dataset('gen', config)
+    datasets = create_dataset('generation', config)
 
     if args.distributed:
         num_tasks = utils.get_world_size()
@@ -175,13 +189,12 @@ def main(args, config):
                                               num_workers=[4, 4], is_trains=[True, False],
                                               collate_fns=[None, None])
 
-    # tokenizer = BertTokenizer.from_pretrained(args.text_encoder)
-    # tokenizer = AutoTokenizer.from_pretrained("./my_tokenizer/")
-    tokenizer = AutoTokenizer.from_pretrained("emilyalsentzer/Bio_ClinicalBERT")
+    url = "microsoft/BiomedVLP-CXR-BERT-specialized"
+    tokenizer = AutoTokenizer.from_pretrained(url, trust_remote_code=True)
 
     #### Model ####
     print("Creating model")
-    model = XVLModel(data_loader, config=config, text_encoder=args.text_encoder, tokenizer=tokenizer, init_deit=True)
+    model = XVLModel(config=config, tokenizer=tokenizer)
 
     model = model.to(device)
 
@@ -219,48 +232,91 @@ def main(args, config):
 
     model_without_ddp = model
     if args.distributed:
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
         model_without_ddp = model.module
 
     print("Start training")
     start_time = time.time()
-    vqa_result = evaluation(model, test_loader, tokenizer, device, config)
-    result_file = save_result(vqa_result, args.result_dir, 'vqa_result_initial')
+    # vqa_result = evaluation(model, val_loader, tokenizer, device, config
+    # result_file = save_result(vqa_result, args.result_dir, 'vqa_result_epoch10')
+    #
+    # # Eval metrics
+    # cocoEval = COCOEvalCapDirect(vqa_result)
+    # cocoEval.evaluate()
+    #
+    # for metric, score in cocoEval.eval.items():
+    #     print('%s: %.3f' % (metric, score))
 
     for epoch in range(start_epoch, max_epoch):
-        if args.evaluate:
-            break
-
         if epoch > 0:
             lr_scheduler.step(epoch + warmup_steps)
 
-        train_stats = train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, config,
-                            fp16_scaler)
+        if not args.evaluate:
+            if args.distributed:
+                data_loader.sampler.set_epoch(epoch)
 
+            train_stats = train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, config,
+                                fp16_scaler)
+
+        if args.evaluate:
+            break
+
+        ########## Val results ##########
+        print('>>>>> Validation results')
         vqa_result = evaluation(model, test_loader, tokenizer, device, config)
         result_file = save_result(vqa_result, args.result_dir, 'vqa_result_epoch%d' % epoch)
+
+        # Eval metrics
+        cocoEval = COCOEvalCapDirect(vqa_result)
+        cocoEval.evaluate()
+
+        for metric, score in cocoEval.eval.items():
+            print('%s: %.3f' % (metric, score))
+
+        ########## Test results ##########
+        print('>>>>> Test results')
+        vqa_result = evaluation(model, test_loader, tokenizer, device, config)
+        result_file = save_result(vqa_result, args.result_dir, 'vqa_result_epoch%d' % epoch)
+
+        # Eval metrics
+        cocoEval = COCOEvalCapDirect(vqa_result)
+        cocoEval.evaluate()
+
+        for metric, score in cocoEval.eval.items():
+            print('%s: %.3f' % (metric, score))
 
         if utils.is_main_process():
             log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
                          'epoch': epoch,
                          }
-            save_obj = {
+            with open(os.path.join(args.output_dir, "log.txt"), "a") as f:
+                f.write(json.dumps(log_stats) + "\n")
+
+            torch.save({
                 'model': model_without_ddp.state_dict(),
                 'optimizer': optimizer.state_dict(),
                 'lr_scheduler': lr_scheduler.state_dict(),
                 'config': config,
                 'epoch': epoch,
-            }
-            torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint.pth'))
-
-            with open(os.path.join(args.output_dir, "log.txt"), "a") as f:
-                f.write(json.dumps(log_stats) + "\n")
+            }, os.path.join(args.output_dir, 'checkpoint.pth'))
 
         dist.barrier()
 
     generation_results = evaluation(model, test_loader, tokenizer, device, config)
-    with open('./gen_final.json', 'w') as f:
+    with open('./gen_val_{}.json'.format(args.output_dir.split('/')[-3], config['dataset']), 'w') as f:
         json.dump(generation_results, f)
+
+    generation_results = evaluation(model, test_loader, tokenizer, device, config)
+    with open('./gen_test_{}.json'.format(args.output_dir.split('/')[-3], config['dataset']), 'w') as f:
+        json.dump(generation_results, f)
+
+    # Eval metrics
+    cocoEval = COCOEvalCapDirect(generation_results)
+    cocoEval.evaluate()
+
+    for metric, score in cocoEval.eval.items():
+        print('%s: %.3f' % (metric, score))
+
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))

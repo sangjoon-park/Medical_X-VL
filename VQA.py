@@ -119,7 +119,7 @@ def main(args, config):
     warmup_steps = config['schedular']['warmup_epochs']
 
     #### Dataset ####
-    print("Creating vqa datasets")
+    print("Creating VQA datasets")
     datasets = create_dataset('vqa', config)
 
     if args.distributed:
@@ -134,11 +134,12 @@ def main(args, config):
                                               num_workers=[4, 4], is_trains=[True, False],
                                               collate_fns=[vqa_collate_fn, None])
 
-    tokenizer = AutoTokenizer.from_pretrained("./my_tokenizer/")
+    url = "microsoft/BiomedVLP-CXR-BERT-specialized"
+    tokenizer = AutoTokenizer.from_pretrained(url, trust_remote_code=True)
 
     #### Model ####
     print("Creating model")
-    model = XVLModel(config=config, text_encoder=args.text_encoder, text_decoder=args.text_decoder, tokenizer=tokenizer)
+    model = XVLModel(config=config, tokenizer=tokenizer)
     model = model.to(device)
 
     arg_opt = utils.AttrDict(config['optimizer'])

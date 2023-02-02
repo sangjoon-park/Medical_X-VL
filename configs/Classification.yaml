@@ -1,36 +1,28 @@
-# Data MIMIC or RSNA
-dataset: 'covid'
-
-covid_train: '/COVID_8TB/sangjoon/COVID_small/train/'
-covid_test: '/COVID_8TB/sangjoon/COVID_small/test/'
-
-# Fusion encoder (True) or Image encoder (False)
-fusion: False
-partial: True
+train: '/8TB_hdd/rsna-pneumonia-detection-challenge/train.csv'
+validation: '/8TB_hdd/rsna-pneumonia-detection-challenge/val.csv'
+test: '/8TB_hdd/rsna-pneumonia-detection-challenge/test.csv'
+image_root: None
 
 bert_config: 'configs/config_bert.json'
 
 image_res: 224
-batch_size_train: 64
+batch_size_train: 16
 batch_size_test: 1
 
-n_classes: 1
-
-queue_size: 49152
+queue_size: 32768
 momentum: 0.995
-vision_width: 384
+vision_width: 768
 embed_dim: 256
 temp: 0.07
-k_test: 24
+k_test: 100
 
 alpha: 0.4
 distill: True
 warm_up: True
 
 optimizer: {opt: adamW, lr: 1e-5, weight_decay: 0.02}
-schedular: {sched: cosine, lr: 1e-5, epochs: 30, min_lr: 1e-6, decay_rate: 1, warmup_lr: 1e-6, warmup_epochs: 10, cooldown_epochs: 0}
+schedular: {sched: cosine, lr: 1e-5, epochs: 10, min_lr: 1e-6, decay_rate: 1, warmup_lr: 1e-5, warmup_epochs: 1, cooldown_epochs: 0}
 
-# iBOT specific options
 patch_size: 16
 out_dim: 8192
 patch_out_dim: 8192
@@ -55,6 +47,6 @@ local_crops_scale: [0.2, 0.5]
 global_crops_number: 2
 local_crops_number: 8
 n_last_layer: 1
-
+fp16_scaler: False
 
 
