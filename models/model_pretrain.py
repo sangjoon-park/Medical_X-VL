@@ -239,19 +239,19 @@ class XVLModel(nn.Module):
 
             loss_ita = (loss_i2f + loss_f2i + loss_i2p + loss_p2i + loss_f2p + loss_p2f) / 3.
 
-            # Select either findings or impressions
-            if random.random() < 0.5:
-                text = findings
-                text_embeds = fnd_embeds
-                text_embeds_m = fnd_embeds_m
-                sim_i2t = sim_i2f
-                sim_t2i = sim_f2i
-            else:
-                text = impression
-                text_embeds = imp_embeds
-                text_embeds_m = imp_embeds_m
-                sim_i2t = sim_i2p
-                sim_t2i = sim_p2i
+            # # Select either findings or impressions
+            # if random.random() < 0.5:
+            #     text = findings
+            #     text_embeds = fnd_embeds
+            #     text_embeds_m = fnd_embeds_m
+            #     sim_i2t = sim_i2f
+            #     sim_t2i = sim_f2i
+            # else:
+            #     text = impression
+            #     text_embeds = imp_embeds
+            #     text_embeds_m = imp_embeds_m
+            #     sim_i2t = sim_i2p
+            #     sim_t2i = sim_p2i
 
             # Calculate MIM loss
             with torch.no_grad():
@@ -259,10 +259,10 @@ class XVLModel(nn.Module):
                                                         attention_mask=torch.ones(
                                                             (teacher_raw.size(0), teacher_raw.size(1))).to(
                                                             teacher_raw.device),
-                                                        encoder_hidden_states=torch.cat((text_embeds_m, text_embeds_m),
+                                                        encoder_hidden_states=torch.cat((fnd_embeds_m, fnd_embeds_m),
                                                                                         dim=0),
                                                         encoder_attention_mask=torch.cat(
-                                                            (text.attention_mask, text.attention_mask), dim=0),
+                                                            (findings.attention_mask, findings.attention_mask), dim=0),
                                                         return_dict=True,
                                                         mode='fusion').last_hidden_state
 
@@ -270,9 +270,19 @@ class XVLModel(nn.Module):
                                                   attention_mask=torch.ones(
                                                       (student_raw.size(0), student_raw.size(1))).to(
                                                       student_raw.device),
-                                                  encoder_hidden_states=torch.cat((text_embeds, text_embeds), dim=0),
+                                                  encoder_hidden_states=torch.cat((fnd_embeds, fnd_embeds), dim=0),
                                                   encoder_attention_mask=torch.cat(
-                                                      (text.attention_mask, text.attention_mask), dim=0),
+                                                      (findings.attention_mask, findings.attention_mask), dim=0),
+                                                  return_dict=True,
+                                                  mode='fusion').last_hidden_state
+
+            student_output_pos = self.text_encoder.bert(encoder_embeds=student_raw,
+                                                  attention_mask=torch.ones(
+                                                      (student_raw.size(0), student_raw.size(1))).to(
+                                                      student_raw.device),
+                                                  encoder_hidden_states=torch.cat((imp_embeds, imp_embeds), dim=0),
+                                                  encoder_attention_mask=torch.cat(
+                                                      (impression.attention_mask, impression.attention_mask), dim=0),
                                                   return_dict=True,
                                                   mode='fusion').last_hidden_state
 
@@ -304,8 +314,8 @@ class XVLModel(nn.Module):
         # calculate ITM loss
         ###=================================###
         # forward the positve image-text pair
-        output_pos = self.text_encoder.bert(encoder_embeds=text_embeds,
-                                            attention_mask=text.attention_mask,
+        output_pos = self.text_encoder.bert(encoder_embeds=imp_embeds,
+                                            attention_mask=impression.attention_mask,
                                             encoder_hidden_states=image_embeds,
                                             encoder_attention_mask=image_atts,
                                             output_attentions=True,
@@ -315,8 +325,8 @@ class XVLModel(nn.Module):
 
         # Hard negative mining
         with torch.no_grad():
-            weights_i2t = F.softmax(sim_i2t[:, :bs], dim=1)
-            weights_t2i = F.softmax(sim_t2i[:, :bs], dim=1)
+            weights_i2t = F.softmax(sim_i2p[:, :bs], dim=1)
+            weights_t2i = F.softmax(sim_p2i[:, :bs], dim=1)
 
             weights_i2t.fill_diagonal_(0)
             weights_t2i.fill_diagonal_(0)
@@ -343,13 +353,13 @@ class XVLModel(nn.Module):
                 neg_idx = torch.randint(0, bs, (1,)).item()
                 while neg_idx == b:
                     neg_idx = torch.randint(0, bs, (1,)).item()
-            text_embeds_neg.append(text_embeds[neg_idx])
-            text_atts_neg.append(text.attention_mask[neg_idx])
+            text_embeds_neg.append(imp_embeds[neg_idx])
+            text_atts_neg.append(impression.attention_mask[neg_idx])
         text_embeds_neg = torch.stack(text_embeds_neg, dim=0)
         text_atts_neg = torch.stack(text_atts_neg, dim=0)
 
-        text_embeds_all = torch.cat([text_embeds, text_embeds_neg], dim=0)
-        text_atts_all = torch.cat([text.attention_mask, text_atts_neg], dim=0)
+        text_embeds_all = torch.cat([imp_embeds, text_embeds_neg], dim=0)
+        text_atts_all = torch.cat([impression.attention_mask, text_atts_neg], dim=0)
 
         image_embeds_all = torch.cat([image_embeds_neg, image_embeds], dim=0)
         image_atts_all = torch.cat([image_atts, image_atts], dim=0)
@@ -375,7 +385,7 @@ class XVLModel(nn.Module):
 
         vl_embeddings_t = torch.cat([output_pos.last_hidden_state[:, 0, :], output_neg.last_hidden_state[:, 0, :]],
                                     dim=0)
-        vl_embeddings_v = torch.cat([student_output_[:bs, 0, :], student_output_neg[:, 0, :]], dim=0)
+        vl_embeddings_v = torch.cat([student_output_pos[:bs, 0, :], student_output_neg[:, 0, :]], dim=0)
         vl_output_t = self.itm_head_t(vl_embeddings_t)
         vl_output_v = self.itm_head_v(vl_embeddings_v)
 
@@ -386,7 +396,7 @@ class XVLModel(nn.Module):
         loss_itm = loss_itm_t + loss_itm_v
 
         ##================= MLM ========================##
-        input_ids = text.input_ids.clone()
+        input_ids = findings.input_ids.clone()
         labels = input_ids.clone()
 
         # MeSH weighted probability matrix
@@ -397,14 +407,14 @@ class XVLModel(nn.Module):
 
         with torch.no_grad():
             logits_m = self.text_encoder_m(input_ids,
-                                           attention_mask=text.attention_mask,
+                                           attention_mask=findings.attention_mask,
                                            encoder_hidden_states=image_embeds_m,
                                            encoder_attention_mask=image_atts,
                                            return_dict=True,
                                            return_logits=True,
                                            )
         mlm_output = self.text_encoder(input_ids,
-                                       attention_mask=text.attention_mask,
+                                       attention_mask=findings.attention_mask,
                                        encoder_hidden_states=image_embeds,
                                        encoder_attention_mask=image_atts,
                                        return_dict=True,

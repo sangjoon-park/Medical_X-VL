@@ -194,7 +194,7 @@ def itm_eval(scores_t2i, text_queries, label_mapping, batch_labels):
     for index, score in enumerate(scores_t2i):
 
         # total len = 1600
-        preds = np.array(F.softmax(torch.from_numpy(score), dim=-1))
+        preds = score
         label = label_mapping[text_queries[index]]
         targets = batch_labels == label
 

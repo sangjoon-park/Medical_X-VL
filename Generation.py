@@ -113,7 +113,7 @@ def evaluation(model, data_loader, tokenizer, device, config):
     header = 'Generate test set result:'
     print_freq = 10
 
-    result = []
+    result = {}
 
     answer_input = None
     for n, batch in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
@@ -137,7 +137,7 @@ def evaluation(model, data_loader, tokenizer, device, config):
             ans = tokenizer.decode(topk_id[0]).replace("[SEP]", "").replace("[CLS]", "").replace("[PAD]", "").strip()
             result[ID] = {"predicted": ans, "caption": gold_caption_list}
 
-            if n % 20 == 0:
+            if n % 100 == 0:
                 print("pred_caption : {} / gold_caption: {}".format(ans, gold_caption_list))
     return result
 
@@ -237,7 +237,7 @@ def main(args, config):
 
     print("Start training")
     start_time = time.time()
-    # vqa_result = evaluation(model, val_loader, tokenizer, device, config
+    # vqa_result = evaluation(model, test_loader, tokenizer, device, config)
     # result_file = save_result(vqa_result, args.result_dir, 'vqa_result_epoch10')
     #
     # # Eval metrics
