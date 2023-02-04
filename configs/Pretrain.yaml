@@ -4,6 +4,7 @@ test_file: '/home/depecher/PycharmProjects/TCL_local/data/mimic/Test.jsonl'
 
 # each train_file (json) contains a python list where each item is {'image': img_path, 'caption': text or list_of_text }               
 bert_config: 'configs/config_bert.json'
+fusion_config: 'configs/config_fusion.json'
 
 image_res: 224
 vision_width: 768
@@ -17,7 +18,7 @@ momentum: 0.995
 alpha: 0.4
 
 optimizer: {opt: adamW, lr: 1e-4, weight_decay: 0.02}
-schedular: {sched: cosine, lr: 1e-4, epochs: 10, min_lr: 1e-5, decay_rate: 1, warmup_lr: 1e-5, warmup_epochs: 3, cooldown_epochs: 0}
+schedular: {sched: cosine, lr: 1e-4, epochs: 15, min_lr: 1e-5, decay_rate: 1, warmup_lr: 1e-5, warmup_epochs: 5, cooldown_epochs: 0}
 
 # iBOT specific options
 patch_size: 16

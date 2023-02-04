@@ -70,11 +70,13 @@ class XVLModel(nn.Module):
 
         vision_width = config['vision_width']
         bert_config = BertConfig.from_json_file(config['bert_config'])
+        fusion_config = BertConfig.from_json_file(config['fusion_config'])
 
         url = "microsoft/BiomedVLP-CXR-BERT-specialized"
 
         # self.text_encoder = BertForMaskedLM(config=bert_config)
         self.text_encoder = BertForMaskedLM.from_pretrained(url, trust_remote_code=True, config=bert_config)
+        self.fusion_encoder = BertForMaskedLM.from_pretrained(url, trust_remote_code=True, config=fusion_config)
 
         text_width = self.text_encoder.config.hidden_size
         self.vision_proj = nn.Linear(vision_width, embed_dim)
@@ -107,11 +109,13 @@ class XVLModel(nn.Module):
         self.vision_proj_m = nn.Linear(vision_width, embed_dim)
 
         self.text_encoder_m = BertForMaskedLM.from_pretrained(url, trust_remote_code=True, config=bert_config)
+        self.fusion_encoder_m = BertForMaskedLM.from_pretrained(url, trust_remote_code=True, config=fusion_config)
         self.text_proj_m = nn.Linear(text_width, embed_dim)
 
         self.model_pairs = [
             [self.vision_proj, self.vision_proj_m],
-            [self.text_encoder, self.text_encoder_m],
+            # [self.text_encoder, self.text_encoder_m],
+            [self.fusion_encoder, self.fusion_encoder_m],
             [self.text_proj, self.text_proj_m],
             [self.head, self.head_m],
         ]
@@ -130,6 +134,11 @@ class XVLModel(nn.Module):
         self.config = config
         self.momentum_schedule = ibot_utils.cosine_scheduler(config['momentum'], 1,
                                                              config['schedular']['epochs'], len(data_loader))
+
+        for param in self.text_encoder.parameters():
+            param.requires_grad = False
+        for param in self.text_encoder_m.parameters():
+            param.requires_grad = False
 
     def forward(self, images, findings, impression, masks, ibot_loss, epoch, fp16_scaler, alpha=0):
         bs = images[0].size(0)
@@ -255,7 +264,7 @@ class XVLModel(nn.Module):
 
             # Calculate MIM loss
             with torch.no_grad():
-                teacher_output_ = self.text_encoder_m.bert(encoder_embeds=teacher_raw,
+                teacher_output_ = self.fusion_encoder_m.bert(encoder_embeds=teacher_raw,
                                                         attention_mask=torch.ones(
                                                             (teacher_raw.size(0), teacher_raw.size(1))).to(
                                                             teacher_raw.device),
@@ -266,7 +275,7 @@ class XVLModel(nn.Module):
                                                         return_dict=True,
                                                         mode='fusion').last_hidden_state
 
-            student_output_ = self.text_encoder.bert(encoder_embeds=student_raw,
+            student_output_ = self.fusion_encoder.bert(encoder_embeds=student_raw,
                                                   attention_mask=torch.ones(
                                                       (student_raw.size(0), student_raw.size(1))).to(
                                                       student_raw.device),
@@ -276,7 +285,7 @@ class XVLModel(nn.Module):
                                                   return_dict=True,
                                                   mode='fusion').last_hidden_state
 
-            student_output_pos = self.text_encoder.bert(encoder_embeds=student_raw,
+            student_output_pos = self.fusion_encoder.bert(encoder_embeds=student_raw,
                                                   attention_mask=torch.ones(
                                                       (student_raw.size(0), student_raw.size(1))).to(
                                                       student_raw.device),
@@ -314,7 +323,7 @@ class XVLModel(nn.Module):
         # calculate ITM loss
         ###=================================###
         # forward the positve image-text pair
-        output_pos = self.text_encoder.bert(encoder_embeds=imp_embeds,
+        output_pos = self.fusion_encoder.bert(encoder_embeds=imp_embeds,
                                             attention_mask=impression.attention_mask,
                                             encoder_hidden_states=image_embeds,
                                             encoder_attention_mask=image_atts,
@@ -364,7 +373,7 @@ class XVLModel(nn.Module):
         image_embeds_all = torch.cat([image_embeds_neg, image_embeds], dim=0)
         image_atts_all = torch.cat([image_atts, image_atts], dim=0)
 
-        output_neg = self.text_encoder.bert(encoder_embeds=text_embeds_all,
+        output_neg = self.fusion_encoder.bert(encoder_embeds=text_embeds_all,
                                             attention_mask=text_atts_all,
                                             encoder_hidden_states=image_embeds_all,
                                             encoder_attention_mask=image_atts_all,
@@ -374,7 +383,7 @@ class XVLModel(nn.Module):
 
         # image negative output
         student_raw_all = torch.cat([image_embeds_neg, image_embeds], dim=0)
-        student_output_neg = self.text_encoder.bert(encoder_embeds=student_raw_all,
+        student_output_neg = self.fusion_encoder.bert(encoder_embeds=student_raw_all,
                                                  attention_mask=torch.ones(
                                                      (student_raw_all.size(0), student_raw_all.size(1))).to(
                                                      student_raw_all.device),
@@ -406,14 +415,19 @@ class XVLModel(nn.Module):
                                       probability_matrix=probability_matrix)
 
         with torch.no_grad():
-            logits_m = self.text_encoder_m(input_ids,
+            text_output_m = self.text_encoder_m.bert(input_ids, attention_mask=findings.attention_mask,
+                                                 return_dict=True, mode='text')
+            logits_m = self.fusion_encoder_m(encoder_embeds=text_output_m.last_hidden_state,
                                            attention_mask=findings.attention_mask,
                                            encoder_hidden_states=image_embeds_m,
                                            encoder_attention_mask=image_atts,
                                            return_dict=True,
                                            return_logits=True,
+                                           mode='fusion'
                                            )
-        mlm_output = self.text_encoder(input_ids,
+        text_output = self.text_encoder.bert(input_ids, attention_mask=findings.attention_mask,
+                                               return_dict=True, mode='text')
+        mlm_output = self.fusion_encoder(encoder_embeds=text_output.last_hidden_state,
                                        attention_mask=findings.attention_mask,
                                        encoder_hidden_states=image_embeds,
                                        encoder_attention_mask=image_atts,
@@ -421,6 +435,7 @@ class XVLModel(nn.Module):
                                        labels=labels,
                                        soft_labels=F.softmax(logits_m, dim=-1),
                                        alpha=alpha,
+                                       mode='fusion'
                                        )
         loss_mlm = mlm_output.loss
 

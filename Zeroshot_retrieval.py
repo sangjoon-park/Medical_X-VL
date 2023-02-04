@@ -92,7 +92,7 @@ def evaluation(model, data_loader, dataset, tokenizer, device, config):
         text = text_queries
         text_input = tokenizer(text, padding='max_length', truncation=True, max_length=120, return_tensors="pt").to(
             device)
-        text_output = model.text_encoder(text_input.input_ids, attention_mask=text_input.attention_mask,
+        text_output = model.text_encoder(text_input.input_ids, attention_mask=text_input.attention_mask, return_dict=True,
                                          mode='text')
         text_feat = text_output.last_hidden_state
         text_embed = F.normalize(model.text_proj(text_feat[:, 0, :]))
@@ -140,14 +140,14 @@ def evaluation(model, data_loader, dataset, tokenizer, device, config):
         encoder_output = image_feats[topk_idx]
         encoder_att = torch.ones(encoder_output.size()[:-1], dtype=torch.long).to(device)
         with torch.no_grad():
-            output_t = model.text_encoder(encoder_embeds=text_feats[start + i].repeat(config['k_test'], 1, 1),
+            output_t = model.fusion_encoder(encoder_embeds=text_feats[start + i].repeat(config['k_test'], 1, 1),
                                           attention_mask=text_atts[start + i].repeat(config['k_test'], 1),
                                           encoder_hidden_states=encoder_output,
                                           encoder_attention_mask=encoder_att,
                                           return_dict=True,
                                           mode='fusion'
                                           )
-            output_v = model.text_encoder(encoder_embeds=encoder_output,
+            output_v = model.fusion_encoder(encoder_embeds=encoder_output,
                                           attention_mask=encoder_att,
                                           encoder_hidden_states=text_feats[start + i].repeat(config['k_test'],
                                                                                              1, 1),

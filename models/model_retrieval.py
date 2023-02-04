@@ -30,7 +30,9 @@ class XVLModel(nn.Module):
         self.visual_encoder = visual_encoder
 
         bert_config = BertConfig.from_json_file(config['bert_config'])
+        fusion_config = BertConfig.from_json_file(config['fusion_config'])
         self.text_encoder = BertModel(config=bert_config, add_pooling_layer=False)
+        self.fusion_encoder = BertModel(config=fusion_config, add_pooling_layer=False)
 
         text_width = self.text_encoder.config.hidden_size
         self.vision_proj = nn.Linear(vision_width, embed_dim)
@@ -52,11 +54,12 @@ class XVLModel(nn.Module):
 
         self.vision_proj_m = nn.Linear(vision_width, embed_dim)
         self.text_encoder_m = BertModel(config=bert_config, add_pooling_layer=False)
+        self.fusion_encoder_m = BertModel(config=fusion_config, add_pooling_layer=False)
         self.text_proj_m = nn.Linear(text_width, embed_dim)
 
         self.model_pairs = [[self.visual_encoder,self.visual_encoder_m],
                             [self.vision_proj,self.vision_proj_m],
-                            [self.text_encoder,self.text_encoder_m],
+                            [self.fusion_encoder,self.fusion_encoder_m],
                             [self.text_proj,self.text_proj_m],
                            ]
         self.copy_params()

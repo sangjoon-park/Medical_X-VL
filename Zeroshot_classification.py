@@ -110,7 +110,7 @@ def evaluation(model, data_loader, tokenizer, device, config):
         text_input = tokenizer(text_neg, padding='max_length', truncation=True, max_length=100, return_tensors="pt").to(
             device)
         with torch.no_grad():
-            text_output = model.text_encoder(text_input.input_ids, attention_mask=text_input.attention_mask,
+            text_output = model.text_encoder(text_input.input_ids, attention_mask=text_input.attention_mask, return_dict=True,
                                              mode='text')
             text_feat = text_output.last_hidden_state
             text_embed = F.normalize(model.text_proj(text_feat[:, 0, :]))
@@ -122,14 +122,14 @@ def evaluation(model, data_loader, tokenizer, device, config):
             encoder_output = image_feats
             encoder_att = torch.ones(encoder_output.size()[:-1], dtype=torch.long).to(device)
 
-            output_t = model.text_encoder(encoder_embeds=text_feats,
+            output_t = model.fusion_encoder(encoder_embeds=text_feats,
                                           attention_mask=text_atts,
                                           encoder_hidden_states=encoder_output,
                                           encoder_attention_mask=encoder_att,
                                           return_dict=True,
                                           mode='fusion'
                                           )
-            output_v = model.text_encoder(encoder_embeds=encoder_output,
+            output_v = model.fusion_encoder(encoder_embeds=encoder_output,
                                           attention_mask=encoder_att,
                                           encoder_hidden_states=text_feats,
                                           encoder_attention_mask=text_atts,
@@ -144,7 +144,7 @@ def evaluation(model, data_loader, tokenizer, device, config):
         text_input = tokenizer(text_pos, padding='max_length', truncation=True, max_length=100, return_tensors="pt").to(
             device)
         with torch.no_grad():
-            text_output = model.text_encoder(text_input.input_ids, attention_mask=text_input.attention_mask,
+            text_output = model.text_encoder(text_input.input_ids, attention_mask=text_input.attention_mask, return_dict=True,
                                              mode='text')
             text_feat = text_output.last_hidden_state
             text_embed = F.normalize(model.text_proj(text_feat[:, 0, :]))
@@ -156,14 +156,14 @@ def evaluation(model, data_loader, tokenizer, device, config):
             encoder_output = image_feats
             encoder_att = torch.ones(encoder_output.size()[:-1], dtype=torch.long).to(device)
 
-            output_t = model.text_encoder(encoder_embeds=text_feats,
+            output_t = model.fusion_encoder(encoder_embeds=text_feats,
                                           attention_mask=text_atts,
                                           encoder_hidden_states=encoder_output,
                                           encoder_attention_mask=encoder_att,
                                           return_dict=True,
                                           mode='fusion'
                                           )
-            output_v = model.text_encoder(encoder_embeds=encoder_output,
+            output_v = model.fusion_encoder(encoder_embeds=encoder_output,
                                           attention_mask=encoder_att,
                                           encoder_hidden_states=text_feats,
                                           encoder_attention_mask=text_atts,

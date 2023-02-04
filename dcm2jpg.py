@@ -6,7 +6,7 @@ from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 
-dir = '/8TB_hdd/pneumothorax/dicom-images-train/'
+dir = '/8TB_hdd/rsna-pneumonia-detection-challenge/stage_2_train_images/'
 
 all_images = glob.glob(dir + '/**/*.dcm', recursive=True)
 

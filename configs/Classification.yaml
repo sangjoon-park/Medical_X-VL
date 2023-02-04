@@ -4,6 +4,7 @@ test: '/8TB_hdd/rsna-pneumonia-detection-challenge/test.csv'
 image_root: None
 
 bert_config: 'configs/config_bert.json'
+fusion_config: 'configs/config_fusion.json'
 
 image_res: 224
 batch_size_train: 16
