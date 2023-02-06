@@ -261,14 +261,14 @@ def main(args, config):
         if args.evaluate:
             break
 
-        ########## Val results ##########
-        print('>>>>> Validation results')
-        vqa_result = evaluation(model, test_loader, tokenizer, device, config)
-        result_file = save_result(vqa_result, args.result_dir, 'vqa_result_epoch%d' % epoch)
-
-        # Eval metrics
-        cocoEval = COCOEvalCapDirect(vqa_result)
-        cocoEval.evaluate()
+        # ########## Val results ##########
+        # print('>>>>> Validation results')
+        # vqa_result = evaluation(model, test_loader, tokenizer, device, config)
+        # result_file = save_result(vqa_result, args.result_dir, 'vqa_result_epoch%d' % epoch)
+        #
+        # # Eval metrics
+        # cocoEval = COCOEvalCapDirect(vqa_result)
+        # cocoEval.evaluate()
 
         for metric, score in cocoEval.eval.items():
             print('%s: %.3f' % (metric, score))

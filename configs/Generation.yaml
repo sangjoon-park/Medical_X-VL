@@ -1,5 +1,4 @@
-# Data MIMIC or RSNA
-train_file: ['/COVID_8TB/sangjoon/mimic_CXR/cxr.h5', '/COVID_8TB/sangjoon/mimic_CXR/mimic_impressions_final.csv']
+train_file: ['/4TB_hdd/mimic_CXR/cxr.h5', '/4TB_hdd/mimic_CXR/mimic_impressions_final.csv']
 test_file: '/home/depecher/PycharmProjects/TCL_local/data/mimic/Test.jsonl'
 
 vision_width: 768
@@ -9,7 +8,7 @@ mlm_probability: 0.15
 temp: 0.07
 
 image_res: 224
-batch_size_train: 36
+batch_size_train: 32
 batch_size_test: 1
 k_test: 5
 max_words_length: 120
@@ -24,10 +23,11 @@ eos_token: 3
 bos_token: 2
 
 bert_config: 'configs/config_bert.json'
+fusion_config: 'configs/config_fusion.json'
 
 momentum: 0.995
 optimizer: {opt: adamW, lr: 1e-4, weight_decay: 0.02}
-schedular: {sched: cosine, lr: 1e-4, epochs: 15, min_lr: 1e-5, decay_rate: 1, warmup_lr: 1e-5, warmup_epochs: 5, cooldown_epochs: 0}
+schedular: {sched: cosine, lr: 1e-4, epochs: 10, min_lr: 1e-5, decay_rate: 1, warmup_lr: 1e-5, warmup_epochs: 4, cooldown_epochs: 0}
 
 beam_size: 3
 min_length: 2
