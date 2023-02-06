@@ -53,6 +53,7 @@ class TextGenerator(object):
 
     def __init__(self,
                  args,
+                 encoder,
                  model,
                  vocab=None,
                  symbols=None,
@@ -66,6 +67,8 @@ class TextGenerator(object):
         self.cuda = (torch.cuda.device_count() > 0)
 
         self.args = args
+
+        self.encoder = encoder
         self.model = model
 
         # self.generator = self.model.generator
@@ -193,12 +196,17 @@ class TextGenerator(object):
         dec_position_ids = None
 
         for step in range(max_length):
-            dec_feat_seq = self.model(alive_seq,
+            encoder_state = self.encoder.bert(alive_seq,
+                                         return_dict=True,
+                                         mode='text'
+                                         )
+            dec_feat_seq = self.model(encoder_embeds=encoder_state.last_hidden_state,
                                       encoder_hidden_states=src_features,
                                       encoder_attention_mask=attention_mask,
                                       return_dict=True,
                                       is_decoder=True,
-                                      reduction='none')
+                                      reduction='none',
+                                      mode='fusion')
 
             dec_feat_seq = dec_feat_seq.logits[:, -1, :]
             vocab_size = dec_feat_seq.size(-1)

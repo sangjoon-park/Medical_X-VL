@@ -48,31 +48,47 @@ class XVLModel(nn.Module):
         )
 
         bert_config = BertConfig.from_json_file(config['bert_config'])
-        self.text_encoder = BertLMHeadModel(config=bert_config)
+        fusion_config = BertConfig.from_json_file(config['fusion_config'])
 
-        self.beam_generator = TextGenerator(config, self.text_encoder)
+        self.text_encoder = BertLMHeadModel(config=bert_config)
+        self.fusion_encoder = BertLMHeadModel(config=fusion_config)
+
+        self.beam_generator = TextGenerator(config, encoder=self.text_encoder, model=self.fusion_encoder)
 
         if self.distill:
             self.visual_encoder_m = vit_base(
-            img_size=(config['image_res'], config['image_res']),
-            patch_size=config['patch_size'],
-            drop_path_rate=config['drop_path'],
-            return_all_tokens=True,
-        )
+                img_size=(config['image_res'], config['image_res']),
+                patch_size=config['patch_size'],
+                drop_path_rate=config['drop_path'],
+                return_all_tokens=True,
+            )
             self.text_encoder_m = BertLMHeadModel(config=bert_config)
-            self.model_pairs = [[self.visual_encoder, self.visual_encoder_m],
-                                [self.text_encoder, self.text_encoder_m],
-                                [self.text_decoder, self.text_decoder_m],
+            self.fusion_encoder_m = BertLMHeadModel(config=fusion_config)
+
+            self.model_pairs = [
+                # [self.visual_encoder, self.visual_encoder_m],
+                                # [self.text_encoder, self.text_encoder_m],
+                                [self.fusion_encoder, self.fusion_encoder_m],
                                 ]
             self.copy_params()
             self.momentum = 0.995
+
+        for param in self.text_encoder.parameters():
+            param.requires_grad = False
+        for param in self.visual_encoder.parameters():
+            param.requires_grad = False
+
+        if self.distill:
+            for param in self.text_encoder_m.parameters():
+                param.requires_grad = False
+            for param in self.visual_encoder_m.parameters():
+                param.requires_grad = False
 
     def forward(self, image, answer=None, train=True, alpha=0):
 
         bs = image.size(0)
 
         image_embeds = self.visual_encoder(image)
-
         image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
 
         if train:
@@ -82,17 +98,29 @@ class XVLModel(nn.Module):
                 with torch.no_grad():
                     self._momentum_update()
                     image_embeds_m = self.visual_encoder_m(image)
-                    answer_output_m = self.text_encoder_m(answer.input_ids,
-                                                   attention_mask=answer.attention_mask,
-                                                   encoder_hidden_states=image_embeds_m,
-                                                   encoder_attention_mask=image_atts,
-                                                   return_dict=True,
-                                                   is_decoder=True,
-                                                   output_hidden_states=True
-                                                   )
+                    fnd_output_m = self.text_encoder_m.bert(answer.input_ids,
+                                                            attention_mask=answer.attention_mask,
+                                                            return_dict=True,
+                                                            mode='text'
+                                                            )
+                    answer_output_m = self.fusion_encoder_m(encoder_embeds=fnd_output_m.last_hidden_state,
+                                                            attention_mask=answer.attention_mask,
+                                                            encoder_hidden_states=image_embeds_m,
+                                                            encoder_attention_mask=image_atts,
+                                                            return_dict=True,
+                                                            is_decoder=True,
+                                                            output_hidden_states=True,
+                                                            mode='fusion'
+                                                            )
+
                     logits_m = answer_output_m.logits[:, :-1, :].contiguous()
 
-                answer_output = self.text_encoder(answer.input_ids,
+                fnd_output = self.text_encoder.bert(answer.input_ids,
+                                                    attention_mask=answer.attention_mask,
+                                                    return_dict=True,
+                                                    mode='text'
+                                                    )
+                answer_output = self.fusion_encoder(encoder_embeds=fnd_output.last_hidden_state,
                                                   attention_mask=answer.attention_mask,
                                                   encoder_hidden_states=image_embeds,
                                                   encoder_attention_mask=image_atts,
@@ -102,10 +130,17 @@ class XVLModel(nn.Module):
                                                   soft_labels=F.softmax(logits_m, dim=-1),
                                                   alpha=alpha,
                                                   reduction='none',
-                                                  output_hidden_states=True
+                                                  output_hidden_states=True,
+                                                  mode='fusion'
                                                   )
+
             else:
-                answer_output = self.text_encoder(answer.input_ids,
+                fnd_output = self.text_encoder.bert(answer.input_ids,
+                                                    attention_mask=answer.attention_mask,
+                                                    return_dict=True,
+                                                    mode='text'
+                                                    )
+                answer_output = self.fusion_encoder(encoder_embeds=fnd_output.last_hidden_state,
                                                   attention_mask=answer.attention_mask,
                                                   encoder_hidden_states=image_embeds,
                                                   encoder_attention_mask=image_atts,
@@ -113,8 +148,10 @@ class XVLModel(nn.Module):
                                                   return_dict=True,
                                                   is_decoder=True,
                                                   reduction='none',
-                                                  output_hidden_states=True
+                                                  output_hidden_states=True,
+                                                  mode='fusion'
                                                   )
+
             loss = answer_output.loss
             loss = loss.sum() / image.size(0)
 
@@ -144,64 +181,6 @@ class XVLModel(nn.Module):
         topk_ids, topk_probs = self.beam_generator.translate_batch(encoder_inputs, out_size=out_size)
         return topk_ids, topk_probs
 
-    def rank_answer(self, question_states, question_atts, answer_ids, answer_atts, k):
-
-        num_ques = question_states.size(0)
-        start_ids = answer_ids[0, 0].repeat(num_ques, 1)  # bos token
-
-        start_output = self.text_decoder(start_ids,
-                                         encoder_hidden_states=question_states,
-                                         encoder_attention_mask=question_atts,
-                                         return_dict=True,
-                                         reduction='none')
-        logits = start_output.logits[:, 0, :]  # first token's logit
-
-        # topk_probs: top-k probability
-        # topk_ids: [num_question, k]
-        answer_first_token = answer_ids[:, 1]
-        prob_first_token = F.softmax(logits, dim=1).index_select(dim=1, index=answer_first_token)
-        topk_probs, topk_ids = prob_first_token.topk(k, dim=1)
-
-        # answer input: [num_question*k, answer_len]
-        input_ids = []
-        input_atts = []
-        for b, topk_id in enumerate(topk_ids):
-            input_ids.append(answer_ids.index_select(dim=0, index=topk_id))
-            input_atts.append(answer_atts.index_select(dim=0, index=topk_id))
-        input_ids = torch.cat(input_ids, dim=0)
-        input_atts = torch.cat(input_atts, dim=0)
-
-        targets_ids = input_ids.masked_fill(input_ids == self.tokenizer.pad_token_id, -100)
-
-        # repeat encoder's output for top-k answers
-        question_states = tile(question_states, 0, k)
-        question_atts = tile(question_atts, 0, k)
-
-        output = self.text_decoder(input_ids,
-                                   attention_mask=input_atts,
-                                   encoder_hidden_states=question_states,
-                                   encoder_attention_mask=question_atts,
-                                   labels=targets_ids,
-                                   return_dict=True,
-                                   reduction='none')
-
-        answer_loss = output.loss
-        answer_loss = answer_loss.view(input_ids.size(0), -1)
-
-        # topk_prob: first token probability
-        topk_probs = topk_probs.view(-1, 1)
-        log_probs = torch.cat([topk_probs.log(), -answer_loss], dim=1)
-
-        # re-calculate log probabilities for the answer sequences using chain rule
-        log_probs_sum = log_probs.sum(1)
-        log_probs_sum = log_probs_sum.view(num_ques, k)
-
-        topk_probs = F.softmax(log_probs_sum, dim=-1)
-        # get top-k after re-ranking
-        topk_probs, rerank_id = topk_probs.topk(k, dim=1)
-        topk_ids = torch.gather(topk_ids, 1, rerank_id)
-
-        return topk_ids, topk_probs
 
 def tile(x, dim, n_tile):
     init_dim = x.size(dim)

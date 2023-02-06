@@ -113,7 +113,7 @@ def evaluation(model, data_loader, tokenizer, device, config):
     header = 'Generate test set result:'
     print_freq = 10
 
-    result = []
+    result = {}
 
     answer_input = None
     for n, batch in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
@@ -232,12 +232,12 @@ def main(args, config):
 
     model_without_ddp = model
     if args.distributed:
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
         model_without_ddp = model.module
 
     print("Start training")
     start_time = time.time()
-    # vqa_result = evaluation(model, val_loader, tokenizer, device, config
+    # vqa_result = evaluation(model, test_loader, tokenizer, device, config)
     # result_file = save_result(vqa_result, args.result_dir, 'vqa_result_epoch10')
     #
     # # Eval metrics

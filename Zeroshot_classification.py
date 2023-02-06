@@ -184,6 +184,7 @@ def evaluation(model, data_loader, tokenizer, device, config):
     print('Evaluation time {}'.format(total_time_str))
 
     AUC = roc_auc_score(y_true=np.array(total_labels), y_score=np.array(total_scores)[:,1])
+    print('AUC:{}'.format(AUC))
 
     return AUC
 
