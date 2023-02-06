@@ -59,7 +59,7 @@ class XVLModel(nn.Module):
                              shared_head=config['shared_head'],
                              )
 
-        state_dict = torch.load('/COVID_8TB/sangjoon/vision_language/checkpoint/base_checkpoint.pth')['student']
+        state_dict = torch.load('/4TB_hdd/downloads/base_checkpoint.pth')['student']
         pos_embed_reshaped = interpolate_pos_embed(state_dict['module.backbone.pos_embed'],
                                                    self.visual_encoder.backbone)
         state_dict['module.backbone.pos_embed'] = pos_embed_reshaped
@@ -88,7 +88,6 @@ class XVLModel(nn.Module):
 
         self.itm_head_v = nn.Linear(text_width, 2)
         self.itm_head_t = nn.Linear(text_width, 2)
-        self.itm_head = nn.Linear(text_width, 2)
 
         # create momentum models
         visual_encoder_m = vit_base(
@@ -225,12 +224,12 @@ class XVLModel(nn.Module):
                 sim_i2p_targets = alpha * F.softmax(sim_i2p_m, dim=1) + (1 - alpha) * sim_targets
                 sim_p2i_targets = alpha * F.softmax(sim_p2i_m, dim=1) + (1 - alpha) * sim_targets
 
-                # sim_f2p_m = fnd_feat_m @ imp_feat_all / self.temp
-                # sim_p2f_m = imp_feat_m @ fnd_feat_all / self.temp
-                # sim_targets = torch.zeros(sim_f2p_m.size()).to(images[0].device)
-                # sim_targets.fill_diagonal_(1)
-                # sim_f2p_targets = alpha * F.softmax(sim_f2p_m, dim=1) + (1 - alpha) * sim_targets
-                # sim_p2f_targets = alpha * F.softmax(sim_p2f_m, dim=1) + (1 - alpha) * sim_targets
+                sim_f2p_m = fnd_feat_m @ imp_feat_all / self.temp
+                sim_p2f_m = imp_feat_m @ fnd_feat_all / self.temp
+                sim_targets = torch.zeros(sim_f2p_m.size()).to(images[0].device)
+                sim_targets.fill_diagonal_(1)
+                sim_f2p_targets = alpha * F.softmax(sim_f2p_m, dim=1) + (1 - alpha) * sim_targets
+                sim_p2f_targets = alpha * F.softmax(sim_p2f_m, dim=1) + (1 - alpha) * sim_targets
 
             sim_i2f = image_feat @ fnd_feat_all / self.temp
             sim_f2i = fnd_feat @ image_feat_all / self.temp
@@ -242,12 +241,12 @@ class XVLModel(nn.Module):
             loss_i2p = -torch.sum(F.log_softmax(sim_i2p, dim=1) * sim_i2p_targets, dim=1).mean()
             loss_p2i = -torch.sum(F.log_softmax(sim_p2i, dim=1) * sim_p2i_targets, dim=1).mean()
 
-            # sim_f2p = fnd_feat @ imp_feat_all / self.temp
-            # sim_p2f = imp_feat @ fnd_feat_all / self.temp
-            # loss_f2p = -torch.sum(F.log_softmax(sim_f2p, dim=1) * sim_f2p_targets, dim=1).mean()
-            # loss_p2f = -torch.sum(F.log_softmax(sim_p2f, dim=1) * sim_p2f_targets, dim=1).mean()
+            sim_f2p = fnd_feat @ imp_feat_all / self.temp
+            sim_p2f = imp_feat @ fnd_feat_all / self.temp
+            loss_f2p = -torch.sum(F.log_softmax(sim_f2p, dim=1) * sim_f2p_targets, dim=1).mean()
+            loss_p2f = -torch.sum(F.log_softmax(sim_p2f, dim=1) * sim_p2f_targets, dim=1).mean()
 
-            loss_ita = (loss_i2f + loss_f2i + loss_i2p + loss_p2i) / 2.
+            loss_ita = (loss_i2f + loss_f2i + loss_i2p + loss_p2i + loss_f2p + loss_p2f) / 3.
 
             # Select either findings or impressions
             if random.random() < 0.5:
@@ -322,14 +321,6 @@ class XVLModel(nn.Module):
                                             return_dict=True,
                                             mode='fusion',
                                             )
-        text_pos = self.fusion_encoder.bert(encoder_embeds=fnd_embeds,
-                                            attention_mask=findings.attention_mask,
-                                            encoder_hidden_states=imp_embeds,
-                                            encoder_attention_mask=impression.attention_mask,
-                                            output_attentions=True,
-                                            return_dict=True,
-                                            mode='fusion',
-                                            )
 
         # Hard negative mining
         with torch.no_grad():
@@ -354,10 +345,6 @@ class XVLModel(nn.Module):
         # select a negative text for each image
         text_embeds_neg = []
         text_atts_neg = []
-        fnd_embeds_neg = []
-        fnd_atts_neg = []
-        imp_embeds_neg = []
-        imp_atts_neg = []
         for b in range(bs):
             try:
                 neg_idx = torch.multinomial(weights_i2t[b], 1).item()
@@ -367,23 +354,11 @@ class XVLModel(nn.Module):
                     neg_idx = torch.randint(0, bs, (1,)).item()
             text_embeds_neg.append(text_embeds[neg_idx])
             text_atts_neg.append(text.attention_mask[neg_idx])
-            fnd_embeds_neg.append(fnd_embeds[neg_idx])
-            fnd_atts_neg.append(findings.attention_mask[neg_idx])
-            imp_embeds_neg.append(imp_embeds[neg_idx])
-            imp_atts_neg.append(impression.attention_mask[neg_idx])
         text_embeds_neg = torch.stack(text_embeds_neg, dim=0)
         text_atts_neg = torch.stack(text_atts_neg, dim=0)
-        fnd_embeds_neg = torch.stack(fnd_embeds_neg, dim=0)
-        fnd_atts_neg = torch.stack(fnd_atts_neg, dim=0)
-        imp_embeds_neg = torch.stack(imp_embeds_neg, dim=0)
-        imp_atts_neg = torch.stack(imp_atts_neg, dim=0)
 
         text_embeds_all = torch.cat([text_embeds, text_embeds_neg], dim=0)
         text_atts_all = torch.cat([text.attention_mask, text_atts_neg], dim=0)
-        fnd_embeds_all = torch.cat([fnd_embeds, fnd_embeds_neg], dim=0)
-        fnd_atts_all = torch.cat([findings.attention_mask, fnd_atts_neg], dim=0)
-        imp_embeds_all = torch.cat([imp_embeds, imp_embeds_neg], dim=0)
-        imp_atts_all = torch.cat([impression.attention_mask, imp_atts_neg], dim=0)
 
         image_embeds_all = torch.cat([image_embeds_neg, image_embeds], dim=0)
         image_atts_all = torch.cat([image_atts, image_atts], dim=0)
@@ -392,13 +367,6 @@ class XVLModel(nn.Module):
                                             attention_mask=text_atts_all,
                                             encoder_hidden_states=image_embeds_all,
                                             encoder_attention_mask=image_atts_all,
-                                            return_dict=True,
-                                            mode='fusion',
-                                            )
-        text_neg = self.fusion_encoder.bert(encoder_embeds=fnd_embeds_all,
-                                            attention_mask=fnd_atts_all,
-                                            encoder_hidden_states=imp_embeds_all,
-                                            encoder_attention_mask=imp_atts_all,
                                             return_dict=True,
                                             mode='fusion',
                                             )
@@ -417,18 +385,14 @@ class XVLModel(nn.Module):
         vl_embeddings_t = torch.cat([output_pos.last_hidden_state[:, 0, :], output_neg.last_hidden_state[:, 0, :]],
                                     dim=0)
         vl_embeddings_v = torch.cat([student_output_[:bs, 0, :], student_output_neg[:, 0, :]], dim=0)
-        vl_embeddings = torch.cat([text_pos.last_hidden_state[:, 0, :], text_neg.last_hidden_state[:, 0, :]],
-                                    dim=0)
         vl_output_t = self.itm_head_t(vl_embeddings_t)
         vl_output_v = self.itm_head_v(vl_embeddings_v)
-        vl_output = self.itm_head(vl_embeddings)
 
         itm_labels = torch.cat([torch.ones(bs, dtype=torch.long), torch.zeros(2 * bs, dtype=torch.long)],
                                dim=0).to(images[0].device)
         loss_itm_t = F.cross_entropy(vl_output_t, itm_labels)
         loss_itm_v = F.cross_entropy(vl_output_v, itm_labels)
-        loss_itm_ = F.cross_entropy(vl_output, itm_labels)
-        loss_itm = loss_itm_t + loss_itm_v + loss_itm_
+        loss_itm = loss_itm_t + loss_itm_v
 
         ##================= MLM ========================##
         input_ids = text.input_ids.clone()

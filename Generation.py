@@ -269,9 +269,9 @@ def main(args, config):
         # # Eval metrics
         # cocoEval = COCOEvalCapDirect(vqa_result)
         # cocoEval.evaluate()
-
-        for metric, score in cocoEval.eval.items():
-            print('%s: %.3f' % (metric, score))
+        #
+        # for metric, score in cocoEval.eval.items():
+        #     print('%s: %.3f' % (metric, score))
 
         ########## Test results ##########
         print('>>>>> Test results')

@@ -198,6 +198,7 @@ class TextGenerator(object):
         for step in range(max_length):
             encoder_state = self.encoder.bert(alive_seq,
                                          return_dict=True,
+                                         is_decoder=True,
                                          mode='text'
                                          )
             dec_feat_seq = self.model(encoder_embeds=encoder_state.last_hidden_state,

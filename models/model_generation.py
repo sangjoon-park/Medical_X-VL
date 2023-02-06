@@ -75,14 +75,14 @@ class XVLModel(nn.Module):
 
         for param in self.text_encoder.parameters():
             param.requires_grad = False
-        for param in self.visual_encoder.parameters():
-            param.requires_grad = False
+        # for param in self.visual_encoder.parameters():
+        #     param.requires_grad = False
 
         if self.distill:
             for param in self.text_encoder_m.parameters():
                 param.requires_grad = False
-            for param in self.visual_encoder_m.parameters():
-                param.requires_grad = False
+            # for param in self.visual_encoder_m.parameters():
+            #     param.requires_grad = False
 
     def forward(self, image, answer=None, train=True, alpha=0):
 
@@ -101,6 +101,7 @@ class XVLModel(nn.Module):
                     fnd_output_m = self.text_encoder_m.bert(answer.input_ids,
                                                             attention_mask=answer.attention_mask,
                                                             return_dict=True,
+                                                            is_decoder=True,
                                                             mode='text'
                                                             )
                     answer_output_m = self.fusion_encoder_m(encoder_embeds=fnd_output_m.last_hidden_state,
@@ -118,6 +119,7 @@ class XVLModel(nn.Module):
                 fnd_output = self.text_encoder.bert(answer.input_ids,
                                                     attention_mask=answer.attention_mask,
                                                     return_dict=True,
+                                                    is_decoder=True,
                                                     mode='text'
                                                     )
                 answer_output = self.fusion_encoder(encoder_embeds=fnd_output.last_hidden_state,
@@ -137,6 +139,7 @@ class XVLModel(nn.Module):
             else:
                 fnd_output = self.text_encoder.bert(answer.input_ids,
                                                     attention_mask=answer.attention_mask,
+                                                    is_decoder=True,
                                                     return_dict=True,
                                                     mode='text'
                                                     )
