@@ -147,18 +147,18 @@ def evaluation(model, data_loader, dataset, tokenizer, device, config):
                                           return_dict=True,
                                           mode='fusion'
                                           )
-            output_v = model.fusion_encoder(encoder_embeds=encoder_output,
-                                          attention_mask=encoder_att,
-                                          encoder_hidden_states=text_feats[start + i].repeat(config['k_test'],
-                                                                                             1, 1),
-                                          encoder_attention_mask=text_atts[start + i].repeat(config['k_test'],
-                                                                                             1),
-                                          return_dict=True,
-                                          mode='fusion')
+            # output_v = model.fusion_encoder(encoder_embeds=encoder_output,
+            #                               attention_mask=encoder_att,
+            #                               encoder_hidden_states=text_feats[start + i].repeat(config['k_test'],
+            #                                                                                  1, 1),
+            #                               encoder_attention_mask=text_atts[start + i].repeat(config['k_test'],
+            #                                                                                  1),
+            #                               return_dict=True,
+            #                               mode='fusion')
 
-        score_t = model.itm_head_t(output_t.last_hidden_state[:, 0, :])[:, 1]
-        score_v = model.itm_head_v(output_v.last_hidden_state[:, 0, :])[:, 1]
-        score = (score_t + score_v) / 2
+        score_t = model.itm_head(output_t.last_hidden_state[:, 0, :])[:, 1]
+        # score_v = model.itm_head_v(output_v.last_hidden_state[:, 0, :])[:, 1]
+        score = score_t
         score_matrix_t2i[start + i, topk_idx] = score
 
         if args.distributed:

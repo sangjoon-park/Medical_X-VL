@@ -1,5 +1,4 @@
-train_file: ['/4TB_hdd/mimic_CXR/cxr.h5', '/4TB_hdd/mimic_CXR/mimic_impressions_final.csv']
-test_file: '/home/depecher/PycharmProjects/TCL_local/data/mimic/Test.jsonl'
+train_file: ['/COVID_8TB/sangjoon/mimic_CXR/cxr.h5', '/COVID_8TB/sangjoon/mimic_CXR/mimic_impressions_final.csv']
 
 vision_width: 768
 embed_dim: 256
@@ -17,7 +16,6 @@ alpha: 0.4
 distill: False
 warm_up: True
 
-# TOKEN number 확인할 것!
 eos: '[SEP]'
 eos_token: 3
 bos_token: 2

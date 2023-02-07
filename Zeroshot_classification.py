@@ -89,7 +89,13 @@ def evaluation(model, data_loader, tokenizer, device, config):
     total_scores = []
     total_labels = []
 
-    reports = ['No evidence of pneumonia.', 'Findings suggesting pneumonia.']
+    if config['data'] == 'pneumonia':
+        reports = ['No evidence of pneumonia.', 'Findings suggesting pneumonia.']
+    # elif config['data'] == 'pneumothorax':
+    #     reports = ['No evidence of pneumothorax.', 'Mediastinal shift, absent lung marking, collapsed lung is noted, findings suggesting pneumothorax.']
+    elif config['data'] == 'covid':
+        reports = ['No evidence of opacity or consolidation.', 'Bilateral peripheral reticular pattern, ground-glass opacities and consolidations, with rounded morphology and a confluent or patchy multifocal distribution with a predominance in the lower fields is observed.']
+        # reports = ['No evidence of covid-19 infection.', 'Findings suggesting covid-19 infection.']
 
     # eval every batch
     for image, label, image_id in data_loader:
@@ -129,16 +135,16 @@ def evaluation(model, data_loader, tokenizer, device, config):
                                           return_dict=True,
                                           mode='fusion'
                                           )
-            output_v = model.fusion_encoder(encoder_embeds=encoder_output,
-                                          attention_mask=encoder_att,
-                                          encoder_hidden_states=text_feats,
-                                          encoder_attention_mask=text_atts,
-                                          return_dict=True,
-                                          mode='fusion')
+            # output_v = model.fusion_encoder(encoder_embeds=encoder_output,
+            #                               attention_mask=encoder_att,
+            #                               encoder_hidden_states=text_feats,
+            #                               encoder_attention_mask=text_atts,
+            #                               return_dict=True,
+            #                               mode='fusion')
 
-            score_t = model.itm_head_t(output_t.last_hidden_state[:, 0, :])[:, 1]
-            score_v = model.itm_head_v(output_v.last_hidden_state[:, 0, :])[:, 1]
-            score_neg = (score_t + score_v) / 2
+            score_t = model.itm_head(output_t.last_hidden_state[:, 0, :])[:, 1]
+            # score_v = model.itm_head_v(output_v.last_hidden_state[:, 0, :])[:, 1]
+            score_neg = score_t
 
         # Positive score
         text_input = tokenizer(text_pos, padding='max_length', truncation=True, max_length=100, return_tensors="pt").to(
@@ -163,16 +169,16 @@ def evaluation(model, data_loader, tokenizer, device, config):
                                           return_dict=True,
                                           mode='fusion'
                                           )
-            output_v = model.fusion_encoder(encoder_embeds=encoder_output,
-                                          attention_mask=encoder_att,
-                                          encoder_hidden_states=text_feats,
-                                          encoder_attention_mask=text_atts,
-                                          return_dict=True,
-                                          mode='fusion')
+            # output_v = model.fusion_encoder(encoder_embeds=encoder_output,
+            #                               attention_mask=encoder_att,
+            #                               encoder_hidden_states=text_feats,
+            #                               encoder_attention_mask=text_atts,
+            #                               return_dict=True,
+            #                               mode='fusion')
 
-            score_t = model.itm_head_t(output_t.last_hidden_state[:, 0, :])[:, 1]
-            score_v = model.itm_head_v(output_v.last_hidden_state[:, 0, :])[:, 1]
-            score_pos = (score_t + score_v) / 2
+            score_t = model.itm_head(output_t.last_hidden_state[:, 0, :])[:, 1]
+            # score_v = model.itm_head_v(output_v.last_hidden_state[:, 0, :])[:, 1]
+            score_pos = score_t
 
         score = torch.cat([score_neg, score_pos], dim=-1)
         score = F.softmax(score)

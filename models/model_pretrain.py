@@ -59,7 +59,7 @@ class XVLModel(nn.Module):
                              shared_head=config['shared_head'],
                              )
 
-        state_dict = torch.load('/4TB_hdd/downloads/base_checkpoint.pth')['student']
+        state_dict = torch.load('/COVID_8TB/sangjoon/vision_language/checkpoint/base_checkpoint.pth')['student']
         pos_embed_reshaped = interpolate_pos_embed(state_dict['module.backbone.pos_embed'],
                                                    self.visual_encoder.backbone)
         state_dict['module.backbone.pos_embed'] = pos_embed_reshaped
@@ -76,7 +76,7 @@ class XVLModel(nn.Module):
 
         # self.text_encoder = BertForMaskedLM(config=bert_config)
         self.text_encoder = BertForMaskedLM.from_pretrained(url, trust_remote_code=True, config=bert_config)
-        self.fusion_encoder = BertForMaskedLM.from_pretrained(url, trust_remote_code=True, config=fusion_config)
+        self.fusion_encoder = BertForMaskedLM(config=fusion_config)
 
         text_width = self.text_encoder.config.hidden_size
         self.vision_proj = nn.Linear(vision_width, embed_dim)
@@ -86,8 +86,7 @@ class XVLModel(nn.Module):
         self.queue_size = config['queue_size']
         self.momentum = config['momentum']
 
-        self.itm_head_v = nn.Linear(text_width, 2)
-        self.itm_head_t = nn.Linear(text_width, 2)
+        self.itm_head = nn.Linear(text_width, 2)
 
         # create momentum models
         visual_encoder_m = vit_base(
@@ -109,12 +108,12 @@ class XVLModel(nn.Module):
         self.vision_proj_m = nn.Linear(vision_width, embed_dim)
 
         self.text_encoder_m = BertForMaskedLM.from_pretrained(url, trust_remote_code=True, config=bert_config)
-        self.fusion_encoder_m = BertForMaskedLM.from_pretrained(url, trust_remote_code=True, config=fusion_config)
+        self.fusion_encoder_m = BertForMaskedLM(config=fusion_config)
         self.text_proj_m = nn.Linear(text_width, embed_dim)
 
         self.model_pairs = [
             [self.vision_proj, self.vision_proj_m],
-            # [self.text_encoder, self.text_encoder_m],
+            [self.text_encoder, self.text_encoder_m],
             [self.fusion_encoder, self.fusion_encoder_m],
             [self.text_proj, self.text_proj_m],
             [self.head, self.head_m],
@@ -135,12 +134,12 @@ class XVLModel(nn.Module):
         self.momentum_schedule = ibot_utils.cosine_scheduler(config['momentum'], 1,
                                                              config['schedular']['epochs'], len(data_loader))
 
-        for param in self.text_encoder.parameters():
-            param.requires_grad = False
-        for param in self.text_encoder_m.parameters():
-            param.requires_grad = False
+        # for param in self.text_encoder.parameters():
+        #     param.requires_grad = False
+        # for param in self.text_encoder_m.parameters():
+        #     param.requires_grad = False
 
-    def forward(self, images, findings, impression, masks, ibot_loss, epoch, fp16_scaler, alpha=0):
+    def forward(self, images, findings, impression, overall, masks, ibot_loss, epoch, fp16_scaler, alpha=0):
         bs = images[0].size(0)
 
         # common params
@@ -169,6 +168,11 @@ class XVLModel(nn.Module):
                                                  return_dict=True, mode='text')
             imp_embeds = imp_output.last_hidden_state
             imp_feat = F.normalize(self.text_proj(imp_embeds[:, 0, :]), dim=-1)
+            
+            overall_output = self.text_encoder.bert(overall.input_ids, attention_mask=overall.attention_mask,
+                                                 return_dict=True, mode='text')
+            overall_embeds = overall_output.last_hidden_state
+            # overall_feat = F.normalize(self.text_proj(overall_embeds[:, 0, :]), dim=-1)
 
             with torch.no_grad():
                 fnd_output_m = self.text_encoder_m.bert(findings.input_ids, attention_mask=findings.attention_mask,
@@ -182,14 +186,18 @@ class XVLModel(nn.Module):
                 imp_feat_m = F.normalize(self.text_proj_m(imp_embeds_m[:, 0, :]), dim=-1)
 
             # get global views -> used for ita, itm, mlm
+            # with torch.no_grad():
+            #     teacher_raw = self.visual_encoder_m(images[:self.config['global_crops_number']])
+            # student_raw = self.visual_encoder(images[:self.config['global_crops_number']],
+            #                                   mask=masks[:self.config['global_crops_number']])
             with torch.no_grad():
-                teacher_raw = self.visual_encoder_m(images[:self.config['global_crops_number']])
-            student_raw = self.visual_encoder(images[:self.config['global_crops_number']],
-                                              mask=masks[:self.config['global_crops_number']])
+                teacher_raw = self.visual_encoder_m(images[0])
+            student_raw = self.visual_encoder(images[0],
+                                              mask=masks[0])
             
             # Contrastive loss
-            image_embeds_m = teacher_raw[:bs]
-            image_embeds = student_raw[:bs]
+            image_embeds_m = teacher_raw
+            image_embeds = student_raw
 
             image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(images[0].device)
 
@@ -246,67 +254,71 @@ class XVLModel(nn.Module):
             loss_f2p = -torch.sum(F.log_softmax(sim_f2p, dim=1) * sim_f2p_targets, dim=1).mean()
             loss_p2f = -torch.sum(F.log_softmax(sim_p2f, dim=1) * sim_p2f_targets, dim=1).mean()
 
-            loss_ita = (loss_i2f + loss_f2i + loss_i2p + loss_p2i + loss_f2p + loss_p2f) / 3.
+            loss_ita = (loss_i2f + loss_f2i + loss_i2p + loss_p2i + loss_f2p + loss_p2f) / 6.
+            
+            text = overall
+            text_embeds = overall_embeds
+            sim_i2t = sim_i2p + sim_i2f
+            sim_t2i = sim_p2i + sim_f2i
 
-            # Select either findings or impressions
-            if random.random() < 0.5:
-                text = findings
-                text_embeds = fnd_embeds
-                text_embeds_m = fnd_embeds_m
-                sim_i2t = sim_i2f
-                sim_t2i = sim_f2i
-            else:
-                text = impression
-                text_embeds = imp_embeds
-                text_embeds_m = imp_embeds_m
-                sim_i2t = sim_i2p
-                sim_t2i = sim_p2i
+            # # Select either findings or impressions
+            # if random.random() < 0.5:
+            #     text = findings
+            #     text_embeds = fnd_embeds
+            #     # text_embeds_m = fnd_embeds_m
+            #     sim_i2t = sim_i2f
+            #     sim_t2i = sim_f2i
+            # else:
+            #     text = impression
+            #     text_embeds = imp_embeds
+            #     # text_embeds_m = imp_embeds_m
+            #     sim_i2t = sim_i2p
+            #     sim_t2i = sim_p2i
 
-            # Calculate MIM loss
-            with torch.no_grad():
-                teacher_output_ = self.fusion_encoder_m.bert(encoder_embeds=teacher_raw,
-                                                        attention_mask=torch.ones(
-                                                            (teacher_raw.size(0), teacher_raw.size(1))).to(
-                                                            teacher_raw.device),
-                                                        encoder_hidden_states=torch.cat((text_embeds_m, text_embeds_m),
-                                                                                        dim=0),
-                                                        encoder_attention_mask=torch.cat(
-                                                            (text.attention_mask, text.attention_mask), dim=0),
-                                                        return_dict=True,
-                                                        mode='fusion').last_hidden_state
+            # # Calculate MIM loss
+            # with torch.no_grad():
+            #     teacher_output_ = self.fusion_encoder_m.bert(encoder_embeds=teacher_raw,
+            #                                             attention_mask=torch.ones(
+            #                                                 (teacher_raw.size(0), teacher_raw.size(1))).to(
+            #                                                 teacher_raw.device),
+            #                                             encoder_hidden_states=torch.cat((text_embeds_m, text_embeds_m),
+            #                                                                             dim=0),
+            #                                             encoder_attention_mask=torch.cat(
+            #                                                 (text.attention_mask, text.attention_mask), dim=0),
+            #                                             return_dict=True,
+            #                                             mode='fusion').last_hidden_state
+            #
+            # student_output_pos = self.fusion_encoder.bert(encoder_embeds=image_embeds,
+            #                                       attention_mask=torch.ones(
+            #                                           (image_embeds.size(0), image_embeds.size(1))).to(
+            #                                           image_embeds.device),
+            #                                       encoder_hidden_states=text_embeds,
+            #                                       encoder_attention_mask=text.attention_mask,
+            #                                       return_dict=True,
+            #                                       mode='fusion').last_hidden_state
 
-            student_output_ = self.fusion_encoder.bert(encoder_embeds=student_raw,
-                                                  attention_mask=torch.ones(
-                                                      (student_raw.size(0), student_raw.size(1))).to(
-                                                      student_raw.device),
-                                                  encoder_hidden_states=torch.cat((text_embeds, text_embeds), dim=0),
-                                                  encoder_attention_mask=torch.cat(
-                                                      (text.attention_mask, text.attention_mask), dim=0),
-                                                  return_dict=True,
-                                                  mode='fusion').last_hidden_state
+            # # get local views
+            # self.visual_encoder.backbone.masked_im_modeling = False
+            # student_local_cls = self.visual_encoder(images[self.config['global_crops_number']:]) if len(images) > \
+            #                                                                                         self.config[
+            #                                                                                             'global_crops_number'] else None
+            # self.visual_encoder.backbone.masked_im_modeling = self.config['use_masked_im_modeling']
+            #
+            # # visual fusion ibot_head
+            # with torch.no_grad():
+            #     teacher_output_cls = self.head_m(teacher_raw)[0]
+            #     teacher_output_patch = self.head_m(teacher_output_)[1]
+            # student_output_cls = self.head(student_raw)[0]
+            # student_output_patch = self.head(student_output_)[1]
+            # student_local_cls_ = self.head(student_local_cls)[0]
+            #
+            # all_loss = ibot_loss((student_output_cls, student_output_patch), (teacher_output_cls, teacher_output_patch),
+            #                      student_local_cls_, masks, epoch)
+            # loss_ibot = all_loss.pop('loss')
 
-            # get local views
-            self.visual_encoder.backbone.masked_im_modeling = False
-            student_local_cls = self.visual_encoder(images[self.config['global_crops_number']:]) if len(images) > \
-                                                                                                    self.config[
-                                                                                                        'global_crops_number'] else None
-            self.visual_encoder.backbone.masked_im_modeling = self.config['use_masked_im_modeling']
-
-            # visual fusion ibot_head
-            with torch.no_grad():
-                teacher_output_cls = self.head_m(teacher_raw)[0]
-                teacher_output_patch = self.head_m(teacher_output_)[1]
-            student_output_cls = self.head(student_raw)[0]
-            student_output_patch = self.head(student_output_)[1]
-            student_local_cls_ = self.head(student_local_cls)[0]
-
-            all_loss = ibot_loss((student_output_cls, student_output_patch), (teacher_output_cls, teacher_output_patch),
-                                 student_local_cls_, masks, epoch)
-            loss_ibot = all_loss.pop('loss')
-
-        if not math.isfinite(loss_ibot.item()):
-            print("Loss is {}, stopping training".format(loss_ibot.item()), force=True)
-            sys.exit(1)
+        # if not math.isfinite(loss_ibot.item()):
+        #     print("Loss is {}, stopping training".format(loss_ibot.item()), force=True)
+        #     sys.exit(1)
 
         self._dequeue_and_enqueue(image_feat_m, fnd_feat_m, imp_feat_m)
 
@@ -371,28 +383,28 @@ class XVLModel(nn.Module):
                                             mode='fusion',
                                             )
 
-        # image negative output
-        student_raw_all = torch.cat([image_embeds_neg, image_embeds], dim=0)
-        student_output_neg = self.fusion_encoder.bert(encoder_embeds=student_raw_all,
-                                                 attention_mask=torch.ones(
-                                                     (student_raw_all.size(0), student_raw_all.size(1))).to(
-                                                     student_raw_all.device),
-                                                 encoder_hidden_states=text_embeds_all,
-                                                 encoder_attention_mask=text_atts_all,
-                                                 return_dict=True,
-                                                 mode='fusion').last_hidden_state
+        # # image negative output
+        # student_raw_all = torch.cat([image_embeds_neg, image_embeds], dim=0)
+        # student_output_neg = self.fusion_encoder.bert(encoder_embeds=student_raw_all,
+        #                                          attention_mask=torch.ones(
+        #                                              (student_raw_all.size(0), student_raw_all.size(1))).to(
+        #                                              student_raw_all.device),
+        #                                          encoder_hidden_states=text_embeds_all,
+        #                                          encoder_attention_mask=text_atts_all,
+        #                                          return_dict=True,
+        #                                          mode='fusion').last_hidden_state
 
         vl_embeddings_t = torch.cat([output_pos.last_hidden_state[:, 0, :], output_neg.last_hidden_state[:, 0, :]],
                                     dim=0)
-        vl_embeddings_v = torch.cat([student_output_[:bs, 0, :], student_output_neg[:, 0, :]], dim=0)
-        vl_output_t = self.itm_head_t(vl_embeddings_t)
-        vl_output_v = self.itm_head_v(vl_embeddings_v)
+        # vl_embeddings_v = torch.cat([student_output_pos[:bs, 0, :], student_output_neg[:, 0, :]], dim=0)
+        vl_output_t = self.itm_head(vl_embeddings_t)
+        # vl_output_v = self.itm_head_v(vl_embeddings_v)
 
         itm_labels = torch.cat([torch.ones(bs, dtype=torch.long), torch.zeros(2 * bs, dtype=torch.long)],
                                dim=0).to(images[0].device)
         loss_itm_t = F.cross_entropy(vl_output_t, itm_labels)
-        loss_itm_v = F.cross_entropy(vl_output_v, itm_labels)
-        loss_itm = loss_itm_t + loss_itm_v
+        # loss_itm_v = F.cross_entropy(vl_output_v, itm_labels)
+        loss_itm = loss_itm_t
 
         ##================= MLM ========================##
         input_ids = text.input_ids.clone()
@@ -429,7 +441,7 @@ class XVLModel(nn.Module):
                                        )
         loss_mlm = mlm_output.loss
 
-        return loss_mlm, loss_ita, loss_itm, loss_ibot
+        return loss_mlm, loss_ita, loss_itm
 
     @torch.no_grad()
     def copy_params(self):

@@ -41,8 +41,8 @@ class XVLModel(nn.Module):
         self.temp = nn.Parameter(torch.ones([]) * config['temp'])
         self.queue_size = config['queue_size']
         self.momentum = config['momentum']
-        self.itm_head_t = nn.Linear(text_width, 2)
-        self.itm_head_v = nn.Linear(text_width, 2)
+        self.itm_head = nn.Linear(text_width, 2)
+        # self.itm_head_v = nn.Linear(text_width, 2)
 
         # create momentum models
         visual_encoder_m = vit_base(

@@ -140,9 +140,11 @@ class ImageFolderMask(Dataset):
 
         findings = self.df.iloc[index].findings
         impression = self.df.iloc[index].impression
+        overall = findings + ' ' + impression
 
         findings = pre_caption(findings, self.max_words)
         impression = pre_caption(impression, self.max_words)
+        overall = pre_caption(overall, self.max_words)
 
         # Make masks
         masks = []
@@ -212,7 +214,7 @@ class ImageFolderMask(Dataset):
 
             masks.append(mask)
 
-        return output, masks, findings, impression
+        return output, masks, findings, impression, overall
 
 
 class Retrieval_dataset(Dataset):

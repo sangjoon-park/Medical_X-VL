@@ -1019,16 +1019,16 @@ class DataAugmentationiBOT(object):
         self.global_crops_number = global_crops_number
         # transformation for the first global crop
         self.global_transfo1 = transforms.Compose([
-            transforms.RandomResizedCrop(224, scale=(0.9, 1.0), interpolation=Image.BICUBIC),
+            transforms.RandomResizedCrop(224, scale=(0.8, 1.0), interpolation=Image.BICUBIC),
             # flip_and_color_jitter,
-            GaussianBlur(0.1, radius_min=0.3, radius_max=0.7),
+            GaussianBlur(1.0, radius_min=0.5, radius_max=0.5),
             normalize,
         ])
         # transformation for the rest of global crops
         self.global_transfo2 = transforms.Compose([
             transforms.RandomResizedCrop((224, 224), scale=global_crops_scale, interpolation=Image.BICUBIC),
             # flip_and_color_jitter,
-            GaussianBlur(0.1),
+            GaussianBlur(1.0, radius_min=0.5, radius_max=0.5),
             # Solarization(0.2),
             normalize,
         ])
@@ -1037,7 +1037,7 @@ class DataAugmentationiBOT(object):
         self.local_transfo = transforms.Compose([
             transforms.RandomResizedCrop((96, 96), scale=local_crops_scale, interpolation=Image.BICUBIC),
             # flip_and_color_jitter,
-            GaussianBlur(p=0.5),
+            GaussianBlur(1.0, radius_min=0.5, radius_max=0.5),
             normalize,
         ])
 
@@ -1085,9 +1085,9 @@ class FineAugmentationiBOT(object):
 
         # transformation for the first global crop
         self.global_transfo1 = transforms.Compose([
-            transforms.RandomResizedCrop(224, scale=(0.75, 1.0), interpolation=Image.BICUBIC),
+            transforms.RandomResizedCrop(224, scale=(0.6, 1.0), interpolation=Image.BICUBIC),
             flip_and_color_jitter,
-            GaussianBlur(0.1),
+            GaussianBlur(1.0, radius_min=0.5, radius_max=0.5),
             normalize,
         ])
 

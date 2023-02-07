@@ -66,20 +66,28 @@ class ErrorGenerator(object):
 
         return error_report
 
-    def reasoning(self, impression):
-        original_class = self.entire_texts[impression]
-        if original_class != ['No Finding']:
-            while True:
-                selected_impression = random.choice(list(self.entire_texts.keys()))
-                selected_class = self.entire_texts[selected_impression]
-                intersection = list(set(original_class).intersection(selected_class))
-                if len(intersection) == 0 and selected_class != ['No Finding']:
-                    break
-            return selected_impression
-        else:
-            return impression
+    def extent(self, report):
+        'large vs. small, mild vs. severe, slight vs. extensive'
+
+        keywords = ['left', 'right', 'upper', 'lower', 'high', 'low', 'big', 'small']
+        counter_keywords = {'left': 'right', 'right': 'left', 'upper':'lower', 'lower': 'upper', 'high': 'low',
+                            'low': 'high', 'big': 'small', 'small': 'big'}
+
+        text_split = report.split()
+        error_report = []
+        for word in text_split:
+            if word in keywords:
+                counter_word = counter_keywords[word]
+                error_report.append(counter_word)
+            else:
+                error_report.append(word)
+        error_report = " ".join(error_report)
+
+        return error_report
 
     def absence(self, impression):
+        'Set: U -> P (random), one change sentence'
+
         original_class = self.entire_texts[impression]
         if original_class != ['No Finding']:
             while True:
@@ -92,6 +100,8 @@ class ErrorGenerator(object):
             return impression
 
     def presence(self, impression):
+        'Set: P -> U (random), change one setnence'
+
         original_class = self.entire_texts[impression]
         if original_class == ['No Finding']:
             while True:
@@ -103,7 +113,21 @@ class ErrorGenerator(object):
         else:
             return impression
 
-    def mismatch(self, findings, impression):
+    def interpret(self, impression):
+        'Set: P -> P (random), change one setnence'
+
+        original_class = self.entire_texts[impression]
+        if original_class == ['No Finding']:
+            while True:
+                selected_impression = random.choice(list(self.entire_texts.keys()))
+                selected_class = self.entire_texts[selected_impression]
+                if selected_class != ['No Finding']:
+                    break
+            return selected_impression
+        else:
+            return impression
+
+    def mismatch(self, impression):
         original_class = self.entire_texts[impression]
         while True:
             selected_idx = np.random.randint(0, len(list(self.entire_text.keys()))-1)

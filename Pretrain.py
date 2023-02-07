@@ -42,7 +42,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     metric_logger.add_meter('loss_mlm', utils.SmoothedValue(window_size=50, fmt='{value:.4f}'))
     metric_logger.add_meter('loss_ita', utils.SmoothedValue(window_size=50, fmt='{value:.4f}'))
     metric_logger.add_meter('loss_itm', utils.SmoothedValue(window_size=50, fmt='{value:.4f}'))
-    metric_logger.add_meter('loss_ibot', utils.SmoothedValue(window_size=50, fmt='{value:.4f}'))
+    # metric_logger.add_meter('loss_ibot', utils.SmoothedValue(window_size=50, fmt='{value:.4f}'))
 
     header = 'Train Epoch: [{}]'.format(epoch)
     print_freq = 50
@@ -70,7 +70,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     if args.distributed:
         data_loader.sampler.set_epoch(epoch)
 
-    for i, (images, masks, findings, impression) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for i, (images, masks, findings, impression, overall) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
 
         optimizer.zero_grad()
 
@@ -79,6 +79,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
 
         fnd_input = tokenizer(findings, padding='longest', truncation=True, max_length=90, return_tensors="pt").to(device)
         imp_input = tokenizer(impression, padding='longest', truncation=True, max_length=60, return_tensors="pt").to(device)
+        overall_input = tokenizer(overall, padding='longest', truncation=True, max_length=150, return_tensors="pt").to(device)
 
         if epoch > 0:
             alpha = config['alpha']
@@ -88,9 +89,9 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
             # calculate iteration
         it = len(data_loader) * epoch + i
 
-        loss_mlm, loss_ita, loss_itm, loss_ibot = model(images, fnd_input, imp_input, masks, ibot_loss, epoch, fp16_scaler, alpha=alpha)
+        loss_mlm, loss_ita, loss_itm = model(images, fnd_input, imp_input, overall_input, masks, ibot_loss, epoch, fp16_scaler, alpha=alpha)
 
-        loss = loss_mlm + loss_ita + loss_itm + loss_ibot
+        loss = loss_mlm + loss_ita + loss_itm
 
         if fp16_scaler is None:
             loss.backward()
@@ -112,7 +113,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
         metric_logger.update(loss_mlm=loss_mlm.item())
         metric_logger.update(loss_ita=loss_ita.item())
         metric_logger.update(loss_itm=loss_itm.item())
-        metric_logger.update(loss_ibot=loss_ibot.item())
+        # metric_logger.update(loss_ibot=loss_ibot.item())
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
 
         if epoch == 0 and i % step_size == 0 and i <= warmup_iterations:
