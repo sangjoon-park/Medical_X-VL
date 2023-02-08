@@ -70,12 +70,11 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     if args.distributed:
         data_loader.sampler.set_epoch(epoch)
 
-    for i, (images, masks, findings, impression, overall) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for i, (images, findings, impression, overall) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
 
         optimizer.zero_grad()
 
-        images = [im.cuda(non_blocking=True) for im in images]
-        masks = [msk.cuda(non_blocking=True) for msk in masks]
+        images = images.cuda(non_blocking=True)
 
         fnd_input = tokenizer(findings, padding='longest', truncation=True, max_length=90, return_tensors="pt").to(device)
         imp_input = tokenizer(impression, padding='longest', truncation=True, max_length=60, return_tensors="pt").to(device)
@@ -89,7 +88,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
             # calculate iteration
         it = len(data_loader) * epoch + i
 
-        loss_mlm, loss_ita, loss_itm = model(images, fnd_input, imp_input, overall_input, masks, ibot_loss, epoch, fp16_scaler, alpha=alpha)
+        loss_mlm, loss_ita, loss_itm = model(images, fnd_input, imp_input, overall_input, ibot_loss, epoch, fp16_scaler, alpha=alpha)
 
         loss = loss_mlm + loss_ita + loss_itm
 
@@ -235,7 +234,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', default='./configs/Pretrain.yaml')
     parser.add_argument('--checkpoint', default='')
-    parser.add_argument('--resume', default=False, type=bool)
+    parser.add_argument('--resume', default=True, type=bool)
     parser.add_argument('--output_dir', default='Pretrain/')
     parser.add_argument('--text_encoder', default='bert-base-uncased')
     parser.add_argument('--device', default='cuda')

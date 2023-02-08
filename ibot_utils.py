@@ -1075,22 +1075,23 @@ class FineAugmentationiBOT(object):
             transforms.ToTensor(),
         ])
         flip_and_color_jitter = transforms.Compose([
-            transforms.RandomHorizontalFlip(p=0.2),
+            # transforms.RandomHorizontalFlip(p=0.2),
+            transforms.RandomAffine(degrees=10, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=5),
             # transforms.RandomApply(
-            #     [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)],
-            #     p=0.8
+            #     [transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1, hue=0.1)],
+            #     p=0.3
             # ),
             # transforms.RandomGrayscale(p=0.2),
         ])
 
         # transformation for the first global crop
         self.global_transfo1 = transforms.Compose([
-            transforms.RandomResizedCrop(224, scale=(0.6, 1.0), interpolation=Image.BICUBIC),
             flip_and_color_jitter,
+            transforms.RandomResizedCrop(224, scale=(0.8, 1.0), interpolation=Image.BICUBIC),
             GaussianBlur(1.0, radius_min=0.5, radius_max=0.5),
             normalize,
         ])
 
     def __call__(self, image):
-        crops=self.global_transfo1(image)
-        return crops
+        image=self.global_transfo1(image)
+        return image

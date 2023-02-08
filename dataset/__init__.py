@@ -14,12 +14,12 @@ from dataset.ibot_dataset import ImageFolderMask, Retrieval_dataset, Gen_dataset
 
 
 def create_dataset(dataset, config):
-    ibot_transform = DataAugmentationiBOT(
-        config['global_crops_scale'],
-        config['local_crops_scale'],
-        config['global_crops_number'],
-        config['local_crops_number'],
-    )
+    # ibot_transform = DataAugmentationiBOT(
+    #     config['global_crops_scale'],
+    #     config['local_crops_scale'],
+    #     config['global_crops_number'],
+    #     config['local_crops_number'],
+    # )
     finetune_transform = FineAugmentationiBOT()
     test_transform = NoAugmentationiBOT(
     )
@@ -34,7 +34,7 @@ def create_dataset(dataset, config):
             pred_aspect_ratio=(0.3, 1 / 0.3),
             pred_shape=config['pred_shape'],
             pred_start_epoch=config['pred_start_epoch'],
-            transforms=ibot_transform
+            transforms=finetune_transform
             )
         return dataset
 

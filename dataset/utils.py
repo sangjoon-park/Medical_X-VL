@@ -42,6 +42,22 @@ def pre_caption(caption,max_words):
     return caption
 
 
+def shuffle(caption):
+    captions = caption.split('.')
+    total_captions = []
+    for caption in captions:
+        if len(caption) < 3:
+            continue
+        if caption[0] == ' ':
+            caption = caption[1:]
+        total_captions.append(caption)
+    len_sentence = len(total_captions)
+    selected_captions = random.sample(total_captions, len_sentence)
+    selected_captions = '. '.join(selected_captions) + '.'
+
+    return selected_captions
+
+
 from vqaTools.vqaEval import VQAEval
 from refTools.evaluation.refEvaluation import RefEvaluation
 

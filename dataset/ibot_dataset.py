@@ -12,7 +12,7 @@ import json
 import pandas as pd
 from torch.utils.data import Dataset
 from PIL import Image
-from dataset.utils import pre_caption, pre_question
+from dataset.utils import pre_caption, pre_question, shuffle
 import torch
 import glob
 from utils import post_process
@@ -136,6 +136,8 @@ class ImageFolderMask(Dataset):
 
         image = self._resize_img(image, 224)
         image = Image.fromarray(image).convert('RGB')
+
+        # Image augmentation
         output = self.transforms(image)  # jinyu
 
         findings = self.df.iloc[index].findings
@@ -146,75 +148,12 @@ class ImageFolderMask(Dataset):
         impression = pre_caption(impression, self.max_words)
         overall = pre_caption(overall, self.max_words)
 
-        # Make masks
-        masks = []
-        for idx, img in enumerate(output):
-            if idx == 0:
-                try:
-                    H, W = img.shape[1] // self.psz, img.shape[2] // self.psz
-                except:
-                    # skip non-image
-                    continue
-                mask = np.zeros((H, W), dtype=bool)
-            else:
-                try:
-                    H, W = img.shape[1] // self.psz, img.shape[2] // self.psz
-                except:
-                    # skip non-image
-                    continue
+        # # Text augmentation
+        # findings = shuffle(findings)
+        # impression = shuffle(impression)
+        # overall = shuffle(overall)
 
-                high = self.get_pred_ratio() * H * W
-
-                if self.pred_shape == 'block':
-                    # following BEiT (https://arxiv.org/abs/2106.08254), see at
-                    # https://github.com/microsoft/unilm/blob/b94ec76c36f02fb2b0bf0dcb0b8554a2185173cd/beit/masking_generator.py#L55
-                    mask = np.zeros((H, W), dtype=bool)
-                    mask_count = 0
-                    while mask_count < high:
-                        max_mask_patches = high - mask_count
-
-                        delta = 0
-                        for attempt in range(10):
-                            low = (min(H, W) // 3) ** 2
-                            target_area = random.uniform(low, max_mask_patches)
-                            aspect_ratio = math.exp(random.uniform(*self.log_aspect_ratio))
-                            h = int(round(math.sqrt(target_area * aspect_ratio)))
-                            w = int(round(math.sqrt(target_area / aspect_ratio)))
-                            if w < W and h < H:
-                                top = random.randint(0, H - h)
-                                left = random.randint(0, W - w)
-
-                                num_masked = mask[top: top + h, left: left + w].sum()
-                                if 0 < h * w - num_masked <= max_mask_patches:
-                                    for i in range(top, top + h):
-                                        for j in range(left, left + w):
-                                            if mask[i, j] == 0:
-                                                mask[i, j] = 1
-                                                delta += 1
-
-                            if delta > 0:
-                                break
-
-                        if delta == 0:
-                            break
-                        else:
-                            mask_count += delta
-
-                elif self.pred_shape == 'rand':
-                    mask = np.hstack([
-                        np.zeros(H * W - int(high)),
-                        np.ones(int(high)),
-                    ]).astype(bool)
-                    np.random.shuffle(mask)
-                    mask = mask.reshape(H, W)
-
-                else:
-                    # no implementation
-                    assert False
-
-            masks.append(mask)
-
-        return output, masks, findings, impression, overall
+        return output, findings, impression, overall
 
 
 class Retrieval_dataset(Dataset):
