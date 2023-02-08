@@ -21,7 +21,7 @@ import h5py
 
 class ImageFolderMask(Dataset):
     def __init__(self, ann_file, patch_size, pred_ratio, pred_ratio_var, pred_aspect_ratio,
-                 pred_shape='block', mode='train', transforms=None, pred_start_epoch=0, max_words=120):
+                 pred_shape='block', mode='train', transforms_1=None, transforms_2=None, pred_start_epoch=0, max_words=120):
         self.psz = patch_size
         self.pred_ratio = pred_ratio[0] if isinstance(pred_ratio, list) and \
                                            len(pred_ratio) == 1 else pred_ratio
@@ -43,15 +43,18 @@ class ImageFolderMask(Dataset):
             split = self.df.iloc[i].split
             findings = self.df.iloc[i].findings
             impression = self.df.iloc[i].impression
-            # view = self.df.iloc[i].view
-            if split == mode and findings != 'NONE' and impression != 'NONE' and type(findings) != float and type(impression) != float:
-                self.index_mapping.append(i)
+            views = self.df.iloc[i].views
+            # if split == mode and findings != 'NONE' and impression != 'NONE' and type(findings) != float and type(impression) != float:
+            if split == mode and impression != 'NONE' and type(impression) != float and len(impression) > 1:
+                if views == 'AP' or views == 'PA':
+                    self.index_mapping.append(i)
 
         if len(self.img_dset) != len(self.df):
             raise AssertionError()
 
         self.max_words = max_words
-        self.transforms = transforms
+        self.transforms_1 = transforms_1
+        self.transforms_2 = transforms_2
 
     def __len__(self):
         return len(self.index_mapping)
@@ -138,22 +141,23 @@ class ImageFolderMask(Dataset):
         image = Image.fromarray(image).convert('RGB')
 
         # Image augmentation
-        output = self.transforms(image)  # jinyu
+        output_1 = self.transforms_1(image)  # jinyu
+        output_2 = self.transforms_2(image)
 
-        findings = self.df.iloc[index].findings
+        # findings = self.df.iloc[index].findings
         impression = self.df.iloc[index].impression
-        overall = findings + ' ' + impression
+        # overall = findings + ' ' + impression
 
-        findings = pre_caption(findings, self.max_words)
+        # findings = pre_caption(findings, self.max_words)
         impression = pre_caption(impression, self.max_words)
-        overall = pre_caption(overall, self.max_words)
+        # overall = pre_caption(overall, self.max_words)
 
-        # # Text augmentation
+        # Text augmentation
         # findings = shuffle(findings)
-        # impression = shuffle(impression)
+        impression = shuffle(impression)
         # overall = shuffle(overall)
 
-        return output, findings, impression, overall
+        return output_1, output_2, impression
 
 
 class Retrieval_dataset(Dataset):

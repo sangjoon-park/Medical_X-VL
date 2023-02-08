@@ -14,15 +14,45 @@ from dataset.ibot_dataset import ImageFolderMask, Retrieval_dataset, Gen_dataset
 
 
 def create_dataset(dataset, config):
-    # ibot_transform = DataAugmentationiBOT(
-    #     config['global_crops_scale'],
-    #     config['local_crops_scale'],
-    #     config['global_crops_number'],
-    #     config['local_crops_number'],
+    # # ibot_transform = DataAugmentationiBOT(
+    # #     config['global_crops_scale'],
+    # #     config['local_crops_scale'],
+    # #     config['global_crops_number'],
+    # #     config['local_crops_number'],
+    # # )
+    # finetune_transform = FineAugmentationiBOT()
+    # test_transform = NoAugmentationiBOT(
     # )
-    finetune_transform = FineAugmentationiBOT()
-    test_transform = NoAugmentationiBOT(
-    )
+
+
+    # jinyu: add augmentation
+    pretrain_transform = transforms.Compose([
+            transforms.RandomResizedCrop(config['image_res'],scale=(0.5, 1.0), interpolation=Image.BICUBIC),
+            # transforms.RandomApply([
+            # transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
+            # transforms.RandomGrayscale(p=0.2),
+            transforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
+            # transforms.RandomHorizontalFlip(),
+            RandomAugment(2,4,isPIL=True,augs=['Identity','AutoContrast','Equalize','Brightness','Sharpness',
+                                              'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
+            transforms.ToTensor(),
+        ])
+    # jinyu: add augmentation
+    train_transform = transforms.Compose([
+            transforms.RandomResizedCrop(config['image_res'],scale=(0.75, 1.0), interpolation=Image.BICUBIC),
+            # transforms.RandomApply([
+            # transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
+            # transforms.RandomGrayscale(p=0.2),
+            transforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
+            # transforms.RandomHorizontalFlip(p=0.2),
+            RandomAugment(1,2,isPIL=True,augs=['Identity','AutoContrast','Equalize','Brightness','Sharpness',
+                                              'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
+            transforms.ToTensor(),
+        ])
+    test_transform = transforms.Compose([
+        transforms.Resize((config['image_res'],config['image_res']),interpolation=Image.BICUBIC),
+        transforms.ToTensor(),
+        ])
 
     if dataset == 'pretrain':
         patch_size = config['patch_size']
@@ -34,12 +64,13 @@ def create_dataset(dataset, config):
             pred_aspect_ratio=(0.3, 1 / 0.3),
             pred_shape=config['pred_shape'],
             pred_start_epoch=config['pred_start_epoch'],
-            transforms=finetune_transform
+            transforms_1=pretrain_transform,
+            transforms_2=train_transform
             )
         return dataset
 
     elif dataset == 'cls':
-        train_dataset = Cls_dataset(config['train'], transforms=finetune_transform)
+        train_dataset = Cls_dataset(config['train'], transforms=train_transform)
         # val_dataset = Cls_dataset(config['validation'], transforms=test_transform)
         test_dataset = Cls_dataset(config['test'], transforms=test_transform)
         return train_dataset, test_dataset
@@ -49,13 +80,13 @@ def create_dataset(dataset, config):
         return test_dataset
 
     elif dataset == 'generation':
-        train_dataset = Gen_dataset(config['train_file'], finetune_transform, mode='train')
+        train_dataset = Gen_dataset(config['train_file'], train_transform, mode='train')
         # val_dataset = Gen_dataset(config['val_file'], test_transform, mode='test')
         test_dataset = Gen_dataset(config['train_file'], test_transform, mode='test')
         return train_dataset, test_dataset
 
     elif dataset == 'vqa':
-        train_dataset = Vqa_dataset(config['train_file'], finetune_transform, config['vqa_root'], config['vg_root'],
+        train_dataset = Vqa_dataset(config['train_file'], train_transform, config['vqa_root'], config['vg_root'],
                                     split='train', chest_only=config['chest_only'])
         vqa_test_dataset = Vqa_dataset(config['test_file'], test_transform, config['vqa_root'], config['vg_root'],
                                        split='test', answer_list=config['answer_list'], chest_only=config['chest_only'])

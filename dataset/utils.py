@@ -58,6 +58,19 @@ def shuffle(caption):
     return selected_captions
 
 
+def split(caption):
+    captions = caption.split('.')
+    total_captions = []
+    for caption in captions:
+        if len(caption) < 3:
+            continue
+        if caption[0] == ' ':
+            caption = caption[1:]
+        total_captions.append(caption)
+
+    return total_captions
+
+
 from vqaTools.vqaEval import VQAEval
 from refTools.evaluation.refEvaluation import RefEvaluation
 

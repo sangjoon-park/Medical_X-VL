@@ -70,15 +70,16 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     if args.distributed:
         data_loader.sampler.set_epoch(epoch)
 
-    for i, (images, findings, impression, overall) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for i, (image, image_aug, impression) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
 
         optimizer.zero_grad()
 
-        images = images.cuda(non_blocking=True)
+        image = image.cuda(non_blocking=True)
+        image_aug = image_aug.cuda(non_blocking=True)
 
-        fnd_input = tokenizer(findings, padding='longest', truncation=True, max_length=90, return_tensors="pt").to(device)
-        imp_input = tokenizer(impression, padding='longest', truncation=True, max_length=60, return_tensors="pt").to(device)
-        overall_input = tokenizer(overall, padding='longest', truncation=True, max_length=150, return_tensors="pt").to(device)
+        # fnd_input = tokenizer(findings, padding='longest', truncation=True, max_length=90, return_tensors="pt").to(device)
+        # imp_input = tokenizer(impression, padding='longest', truncation=True, max_length=60, return_tensors="pt").to(device)
+        # overall_input = tokenizer(overall, padding='longest', truncation=True, max_length=150, return_tensors="pt").to(device)
 
         if epoch > 0:
             alpha = config['alpha']
@@ -88,7 +89,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
             # calculate iteration
         it = len(data_loader) * epoch + i
 
-        loss_mlm, loss_ita, loss_itm = model(images, fnd_input, imp_input, overall_input, ibot_loss, epoch, fp16_scaler, alpha=alpha)
+        loss_mlm, loss_ita, loss_itm = model(image, image_aug, impression, alpha = alpha)
 
         loss = loss_mlm + loss_ita + loss_itm
 
