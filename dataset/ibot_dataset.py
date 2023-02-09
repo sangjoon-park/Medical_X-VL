@@ -45,9 +45,11 @@ class ImageFolderMask(Dataset):
             impression = self.df.iloc[i].impression
             views = self.df.iloc[i].views
             # if split == mode and findings != 'NONE' and impression != 'NONE' and type(findings) != float and type(impression) != float:
-            if split == mode and impression != 'NONE' and type(impression) != float and len(impression) > 1:
-                if views == 'AP' or views == 'PA':
-                    self.index_mapping.append(i)
+            if split == mode and impression != 'NONE' and type(impression) != float:
+                check_impression = shuffle(pre_caption(impression, 90))
+                if len(check_impression) > 1:
+                    if views == 'AP' or views == 'PA':
+                        self.index_mapping.append(i)
 
         if len(self.img_dset) != len(self.df):
             raise AssertionError()

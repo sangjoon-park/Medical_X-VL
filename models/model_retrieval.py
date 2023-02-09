@@ -1,5 +1,5 @@
 from functools import partial
-from models.ibot_vit import VisionTransformer, interpolate_pos_embed, vit_base, vit_small
+from models.vit import VisionTransformer, interpolate_pos_embed, vit_base
 from models.xbert import BertConfig, BertModel
 
 import torch
@@ -25,7 +25,6 @@ class XVLModel(nn.Module):
             img_size=(config['image_res'], config['image_res']),
             patch_size=config['patch_size'],
             drop_path_rate=config['drop_path'],
-            return_all_tokens=True,
         )
         self.visual_encoder = visual_encoder
 
@@ -48,7 +47,6 @@ class XVLModel(nn.Module):
         visual_encoder_m = vit_base(
             img_size=(config['image_res'], config['image_res']),
             patch_size=config['patch_size'],
-            return_all_tokens=True,
         )
         self.visual_encoder_m = visual_encoder_m
 
@@ -66,13 +64,11 @@ class XVLModel(nn.Module):
 
         # create the queue
         self.register_buffer("image_queue", torch.randn(embed_dim, self.queue_size))
-        self.register_buffer("fnd_queue", torch.randn(embed_dim, self.queue_size))
-        self.register_buffer("imp_queue", torch.randn(embed_dim, self.queue_size))
+        self.register_buffer("text_queue", torch.randn(embed_dim, self.queue_size))
         self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
 
         self.image_queue = nn.functional.normalize(self.image_queue, dim=0)
-        self.fnd_queue = nn.functional.normalize(self.fnd_queue, dim=0)
-        self.imp_queue = nn.functional.normalize(self.imp_queue, dim=0)
+        self.text_queue = nn.functional.normalize(self.text_queue, dim=0)
 
 
     def forward(self, image, text, label, alpha, fp16_scaler, n, idx):

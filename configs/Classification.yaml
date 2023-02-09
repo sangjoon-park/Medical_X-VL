@@ -1,8 +1,8 @@
-train: '/8TB_hdd/rsna-pneumonia-detection-challenge/train.csv'
-validation: '/8TB_hdd/rsna-pneumonia-detection-challenge/valid.csv'
-test: '/8TB_hdd/rsna-pneumonia-detection-challenge/test.csv'
+train: '/8TB_hdd/covidx/train.csv'
+validation: '/8TB_hdd/covidx/valid.csv'
+test: '/8TB_hdd/covidx/test.csv'
 
-data: 'pneumonia'
+data: 'covid'
 
 bert_config: 'configs/config_bert.json'
 fusion_config: 'configs/config_fusion.json'
@@ -11,7 +11,7 @@ image_res: 224
 batch_size_train: 16
 batch_size_test: 1
 
-queue_size: 49152
+queue_size: 81920
 momentum: 0.995
 vision_width: 768
 embed_dim: 256
@@ -23,7 +23,7 @@ distill: True
 warm_up: True
 
 optimizer: {opt: adamW, lr: 1e-5, weight_decay: 0.02}
-schedular: {sched: cosine, lr: 1e-5, epochs: 10, min_lr: 1e-6, decay_rate: 1, warmup_lr: 1e-5, warmup_epochs: 1, cooldown_epochs: 0}
+schedular: {sched: cosine, lr: 1e-5, epochs: 10, min_lr: 1e-6, decay_rate: 1, warmup_lr: 1e-6, warmup_epochs: 1, cooldown_epochs: 0}
 
 patch_size: 16
 out_dim: 8192

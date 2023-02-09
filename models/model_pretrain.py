@@ -31,10 +31,11 @@ class XVLModel(nn.Module):
             drop_path_rate=config['drop_path'],
         )
 
-        state_dict = torch.load('/COVID_8TB/sangjoon/vision_language/checkpoint/base_checkpoint.pth')['student']
-        pos_embed_reshaped = interpolate_pos_embed(state_dict['module.backbone.pos_embed'],
+        # Load MIMIC pre-trained weights
+        state_dict = torch.load('./pretrained.pth')['teacher']
+        pos_embed_reshaped = interpolate_pos_embed(state_dict['backbone.pos_embed'],
                                                    self.visual_encoder)
-        state_dict['module.backbone.pos_embed'] = pos_embed_reshaped
+        state_dict['backbone.pos_embed'] = pos_embed_reshaped
         state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
         state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
         state_dict = {k.replace("last_layer", ""): v for k, v in state_dict.items()}
@@ -92,10 +93,10 @@ class XVLModel(nn.Module):
         self.image_queue = nn.functional.normalize(self.image_queue, dim=0)
         self.text_queue = nn.functional.normalize(self.text_queue, dim=0)
 
-        for param in self.text_encoder.parameters():
-            param.requires_grad = False
-        for param in self.text_encoder_m.parameters():
-            param.requires_grad = False
+        # for param in self.text_encoder.parameters():
+        #     param.requires_grad = False
+        # for param in self.text_encoder_m.parameters():
+        #     param.requires_grad = False
 
     def forward(self, image, image_aug, text, alpha=0):
         with torch.no_grad():

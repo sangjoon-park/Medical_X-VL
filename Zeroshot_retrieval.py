@@ -98,7 +98,7 @@ def evaluation(model, data_loader, dataset, tokenizer, device, config):
         text_output = model.text_encoder(text_input.input_ids, attention_mask=text_input.attention_mask, return_dict=True,
                                          mode='text')
         text_feat = text_output.last_hidden_state
-        text_embed = F.normalize(model.text_proj(text_feat[:, 0, :]))
+        text_embed = F.normalize(model.text_proj(text_feat[:, 0, :]), dim=-1)
 
         text_embeds = text_embed
         text_feats = text_feat
@@ -143,7 +143,7 @@ def evaluation(model, data_loader, dataset, tokenizer, device, config):
         encoder_output = image_feats[topk_idx]
         encoder_att = torch.ones(encoder_output.size()[:-1], dtype=torch.long).to(device)
         with torch.no_grad():
-            output_t = model.fusion_encoder(encoder_embeds=text_feats[start + i].repeat(config['k_test'], 1, 1),
+            output = model.fusion_encoder(encoder_embeds=text_feats[start + i].repeat(config['k_test'], 1, 1),
                                           attention_mask=text_atts[start + i].repeat(config['k_test'], 1),
                                           encoder_hidden_states=encoder_output,
                                           encoder_attention_mask=encoder_att,
@@ -159,9 +159,8 @@ def evaluation(model, data_loader, dataset, tokenizer, device, config):
             #                               return_dict=True,
             #                               mode='fusion')
 
-        score_t = model.itm_head(output_t.last_hidden_state[:, 0, :])[:, 1]
+        score = model.itm_head(output.last_hidden_state[:, 0, :])[:, 1]
         # score_v = model.itm_head_v(output_v.last_hidden_state[:, 0, :])[:, 1]
-        score = score_t
         score_matrix_t2i[start + i, topk_idx] = score
 
         if args.distributed:
@@ -256,12 +255,12 @@ def main(args, config):
         state_dict = checkpoint['model']
 
         # reshape positional embedding to accomodate for image resolution change
-        pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder.backbone.pos_embed'],
+        pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder.pos_embed'],
                                                    model.visual_encoder)
-        state_dict['visual_encoder.backbone.pos_embed'] = pos_embed_reshaped
-        m_pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder_m.backbone.pos_embed'],
+        state_dict['visual_encoder.pos_embed'] = pos_embed_reshaped
+        m_pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder_m.pos_embed'],
                                                      model.visual_encoder_m)
-        state_dict['visual_encoder_m.backbone.pos_embed'] = m_pos_embed_reshaped
+        state_dict['visual_encoder_m.pos_embed'] = m_pos_embed_reshaped
         state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
 
         for key in list(state_dict.keys()):
