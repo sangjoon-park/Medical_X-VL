@@ -1,5 +1,5 @@
 from functools import partial
-from models.vit import VisionTransformer, interpolate_pos_embed, vit_base
+from models.vit import VisionTransformer, interpolate_pos_embed, vit_base, vit_small
 from models.xbert import BertConfig, BertModel
 
 import torch
@@ -21,7 +21,7 @@ class XVLModel(nn.Module):
         embed_dim = config['embed_dim']
         vision_width = config['vision_width']
 
-        visual_encoder = vit_base(
+        visual_encoder = vit_small(
             img_size=(config['image_res'], config['image_res']),
             patch_size=config['patch_size'],
             drop_path_rate=config['drop_path'],
@@ -44,7 +44,7 @@ class XVLModel(nn.Module):
         # self.itm_head_v = nn.Linear(text_width, 2)
 
         # create momentum models
-        visual_encoder_m = vit_base(
+        visual_encoder_m = vit_small(
             img_size=(config['image_res'], config['image_res']),
             patch_size=config['patch_size'],
         )

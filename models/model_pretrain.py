@@ -1,5 +1,5 @@
 from functools import partial
-from models.vit import VisionTransformer, interpolate_pos_embed, vit_base
+from models.vit import VisionTransformer, interpolate_pos_embed, vit_base, vit_small
 from models.xbert import BertConfig, BertForMaskedLM
 
 import torch
@@ -25,20 +25,21 @@ class XVLModel(nn.Module):
         self.mlm_probability = config['mlm_probability']
         embed_dim = config['embed_dim']
 
-        self.visual_encoder = vit_base(
+        self.visual_encoder = vit_small(
             img_size=(config['image_res'], config['image_res']),
             patch_size=config['patch_size'],
             drop_path_rate=config['drop_path'],
         )
 
         # Load MIMIC pre-trained weights
-        state_dict = torch.load('./pretrained.pth')['teacher']
-        pos_embed_reshaped = interpolate_pos_embed(state_dict['backbone.pos_embed'],
-                                                   self.visual_encoder)
-        state_dict['backbone.pos_embed'] = pos_embed_reshaped
-        state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
-        state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
-        state_dict = {k.replace("last_layer", ""): v for k, v in state_dict.items()}
+        # state_dict = torch.load('./pretrained.pth')['teacher']
+        # pos_embed_reshaped = interpolate_pos_embed(state_dict['backbone.pos_embed'],
+        #                                            self.visual_encoder)
+        # state_dict['backbone.pos_embed'] = pos_embed_reshaped
+        # state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
+        # state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+        # state_dict = {k.replace("last_layer", ""): v for k, v in state_dict.items()}
+        state_dict = torch.hub.load('facebookresearch/dino:main', 'dino_vits8').state_dict()
         msg = self.visual_encoder.load_state_dict(state_dict, strict=False)
         print(msg)
 
@@ -62,7 +63,7 @@ class XVLModel(nn.Module):
         self.itm_head = nn.Linear(text_width, 2)
 
         # create momentum models
-        self.visual_encoder_m = vit_base(
+        self.visual_encoder_m = vit_small(
             img_size=(config['image_res'], config['image_res']),
             patch_size=config['patch_size'],
         )
@@ -186,9 +187,8 @@ class XVLModel(nn.Module):
         loss_i2t = -torch.sum(F.log_softmax(sim_i2t, dim=1) * sim_i2t_targets, dim=1).mean()
         loss_t2i = -torch.sum(F.log_softmax(sim_t2i, dim=1) * sim_t2i_targets, dim=1).mean()
 
-        # jinyu: add inMod g2l loss
-        # loss_t2t_inMod_l = self.in_batch_g2l_loss(text_feat_m_l, text_feat, self.temp, text.attention_mask[:, 1:])
-        # loss_i2i_inMod_l = self.in_batch_g2l_loss(image_feat_m_l, image_feat, self.temp)
+        loss_t2t_inMod_l = self.in_batch_g2l_loss(text_feat_m_l, text_feat, self.temp, text_attention_mask_l_all)
+        loss_i2i_inMod_l = self.in_batch_g2l_loss(image_feat_m_l, image_feat, self.temp)
 
         loss_t2i_inMod_l = self.in_batch_g2l_loss(text_feat_m_l, image_feat, self.temp, text_attention_mask_l_all)
         loss_i2t_inMod_l = self.in_batch_g2l_loss(image_feat_m_l, text_feat, self.temp)
@@ -200,7 +200,7 @@ class XVLModel(nn.Module):
         loss_i2i = -torch.sum(F.log_softmax(sim_i2i, dim=1) * sim_targets, dim=1).mean()
         loss_t2t = -torch.sum(F.log_softmax(sim_t2t, dim=1) * sim_targets, dim=1).mean()
 
-        loss_ita = (loss_i2t_inMod_l + loss_t2i_inMod_l + loss_i2t + loss_t2i + loss_i2i + loss_t2t) / 6
+        loss_ita = (loss_i2t_inMod_l + loss_t2i_inMod_l + loss_t2t_inMod_l + loss_i2i_inMod_l + loss_i2t + loss_t2i + loss_i2i + loss_t2t) / 8.
 
         self._dequeue_and_enqueue(image_feat_m, text_feat_m)
 
@@ -411,7 +411,7 @@ class XVLModel(nn.Module):
 
         # The positive score is the first element of the log softmax.
         if attention_mask is not None:
-            loss = (torch.sum(-pred_log[:, :, 0].squeeze(), dim=1) / torch.sum(attention_mask, dim=1)).mean()
+            loss = (torch.sum(-pred_log[:, :, 0].squeeze(-1), dim=1) / torch.sum(attention_mask, dim=1)).mean()
         else:
             loss = -pred_log[:, :, 0].mean()
 

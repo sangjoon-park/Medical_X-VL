@@ -1,5 +1,5 @@
 train: '/8TB_hdd/covidx/train.csv'
-validation: '/8TB_hdd/covidx/valid.csv'
+validation: '/8TB_hdd/covidx/val.csv'
 test: '/8TB_hdd/covidx/test.csv'
 
 data: 'covid'
@@ -11,7 +11,7 @@ image_res: 224
 batch_size_train: 16
 batch_size_test: 1
 
-queue_size: 81920
+queue_size: 65536
 momentum: 0.995
 vision_width: 768
 embed_dim: 256
@@ -25,7 +25,7 @@ warm_up: True
 optimizer: {opt: adamW, lr: 1e-5, weight_decay: 0.02}
 schedular: {sched: cosine, lr: 1e-5, epochs: 10, min_lr: 1e-6, decay_rate: 1, warmup_lr: 1e-6, warmup_epochs: 1, cooldown_epochs: 0}
 
-patch_size: 16
+patch_size: 8
 out_dim: 8192
 patch_out_dim: 8192
 shared_head: False
