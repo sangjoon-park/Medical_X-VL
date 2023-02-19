@@ -45,8 +45,8 @@ class ImageFolderMask(Dataset):
             impression = self.df.iloc[i].impression
             views = self.df.iloc[i].views
             # if split == mode and findings != 'NONE' and impression != 'NONE' and type(findings) != float and type(impression) != float:
-            if split == mode and impression != 'NONE' and type(impression) != float:
-                check_impression = shuffle(pre_caption(impression, 90))
+            if split == mode and findings != 'NONE' and type(findings) != float:
+                check_impression = shuffle(pre_caption(findings, 90))
                 if len(check_impression) > 1:
                     if views == 'AP' or views == 'PA':
                         self.index_mapping.append(i)
@@ -147,7 +147,7 @@ class ImageFolderMask(Dataset):
         output_2 = self.transforms_2(image)
 
         # findings = self.df.iloc[index].findings
-        impression = self.df.iloc[index].impression
+        impression = self.df.iloc[index].findings
         # overall = findings + ' ' + impression
 
         # findings = pre_caption(findings, self.max_words)

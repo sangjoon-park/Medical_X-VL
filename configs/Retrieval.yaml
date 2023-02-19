@@ -24,7 +24,7 @@ warm_up: True
 optimizer: {opt: adamW, lr: 1e-5, weight_decay: 0.02}
 schedular: {sched: cosine, lr: 1e-5, epochs: 10, min_lr: 1e-6, decay_rate: 1, warmup_lr: 1e-6, warmup_epochs: 1, cooldown_epochs: 0}
 
-patch_size: 8
+patch_size: 16
 out_dim: 8192
 patch_out_dim: 8192
 shared_head: False

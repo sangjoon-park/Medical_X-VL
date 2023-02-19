@@ -8,9 +8,7 @@
 import argparse
 import os
 
-
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
-
 import ruamel.yaml as yaml
 import numpy as np
 import random

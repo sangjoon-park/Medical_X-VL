@@ -1,5 +1,5 @@
 from functools import partial
-from models.vit import VisionTransformer, interpolate_pos_embed, vit_base, vit_small
+from models.vit import VisionTransformer, interpolate_pos_embed, vit_base
 from models.xbert import BertConfig, BertForMaskedLM
 
 import torch
@@ -25,21 +25,20 @@ class XVLModel(nn.Module):
         self.mlm_probability = config['mlm_probability']
         embed_dim = config['embed_dim']
 
-        self.visual_encoder = vit_small(
+        self.visual_encoder = vit_base(
             img_size=(config['image_res'], config['image_res']),
             patch_size=config['patch_size'],
             drop_path_rate=config['drop_path'],
         )
 
         # Load MIMIC pre-trained weights
-        # state_dict = torch.load('./pretrained.pth')['teacher']
-        # pos_embed_reshaped = interpolate_pos_embed(state_dict['backbone.pos_embed'],
-        #                                            self.visual_encoder)
-        # state_dict['backbone.pos_embed'] = pos_embed_reshaped
-        # state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
-        # state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
-        # state_dict = {k.replace("last_layer", ""): v for k, v in state_dict.items()}
-        state_dict = torch.hub.load('facebookresearch/dino:main', 'dino_vits8').state_dict()
+        state_dict = torch.load('./pretrained.pth')['teacher']
+        pos_embed_reshaped = interpolate_pos_embed(state_dict['backbone.pos_embed'],
+                                                   self.visual_encoder)
+        state_dict['backbone.pos_embed'] = pos_embed_reshaped
+        state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
+        state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+        state_dict = {k.replace("last_layer", ""): v for k, v in state_dict.items()}
         msg = self.visual_encoder.load_state_dict(state_dict, strict=False)
         print(msg)
 
@@ -63,7 +62,7 @@ class XVLModel(nn.Module):
         self.itm_head = nn.Linear(text_width, 2)
 
         # create momentum models
-        self.visual_encoder_m = vit_small(
+        self.visual_encoder_m = vit_base(
             img_size=(config['image_res'], config['image_res']),
             patch_size=config['patch_size'],
         )
