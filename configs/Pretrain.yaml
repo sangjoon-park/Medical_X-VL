@@ -17,8 +17,8 @@ queue_size: 65536
 momentum: 0.995
 alpha: 0.4
 
-optimizer: {opt: adamW, lr: 1e-5, weight_decay: 0.02}
-schedular: {sched: cosine, lr: 1e-5, epochs: 15, min_lr: 1e-6, decay_rate: 1, warmup_lr: 1e-6, warmup_epochs: 5, cooldown_epochs: 0}
+optimizer: {opt: adamW, lr: 1e-6, weight_decay: 0.02}
+schedular: {sched: cosine, lr: 1e-6, epochs: 15, min_lr: 1e-7, decay_rate: 1, warmup_lr: 1e-7, warmup_epochs: 5, cooldown_epochs: 0}
 
 # iBOT specific options
 patch_size: 8
