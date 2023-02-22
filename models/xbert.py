@@ -552,16 +552,15 @@ class BertEncoder(nn.Module):
 
         if mode == 'text':
             start_layer = 0
-            output_layer = self.config.num_hidden_layers
+            output_layer = self.config.fusion_layer
 
         elif mode == 'fusion':
             start_layer = self.config.fusion_layer
             output_layer = self.config.num_hidden_layers
 
         elif mode == 'multi_modal':
-            raise NotImplementedError()
-            # start_layer = 0
-            # output_layer = self.config.num_hidden_layers
+            start_layer = 0
+            output_layer = self.config.num_hidden_layers
 
         for i in range(start_layer, output_layer):
             layer_module = self.layer[i]
@@ -1213,7 +1212,6 @@ class BertLMHeadModel(BertPreTrainedModel):
             position_ids=None,
             head_mask=None,
             inputs_embeds=None,
-            encoder_embeds=None,
             encoder_hidden_states=None,
             encoder_attention_mask=None,
             labels=None,
@@ -1272,7 +1270,6 @@ class BertLMHeadModel(BertPreTrainedModel):
             position_ids=position_ids,
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
-            encoder_embeds=encoder_embeds,
             encoder_hidden_states=encoder_hidden_states,
             encoder_attention_mask=encoder_attention_mask,
             past_key_values=past_key_values,

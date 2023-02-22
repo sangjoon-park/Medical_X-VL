@@ -89,7 +89,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
             # calculate iteration
         it = len(data_loader) * epoch + i
 
-        loss_mlm, loss_ita, loss_itm = model(image, image_aug, impression, alpha = alpha)
+        loss_mlm, loss_ita, loss_itm = model(image, image_aug, impression, epoch, alpha = alpha)
 
         loss = loss_mlm + loss_ita + loss_itm
 

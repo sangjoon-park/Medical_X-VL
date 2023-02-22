@@ -1,4 +1,4 @@
-train_file: ['/8TB_hdd/mimic_CXR/cxr.h5', '/8TB_hdd/mimic_CXR/mimic_impressions_final.csv']
+train_file: ['/COVID_8TB/sangjoon/mimic_CXR/cxr.h5', '/COVID_8TB/sangjoon/mimic_CXR/mimic_impressions_final.csv']
 val_file: '/home/depecher/PycharmProjects/TCL_local/data/mimic/Valid.jsonl'
 test_file: '/home/depecher/PycharmProjects/TCL_local/data/mimic/Test.jsonl'
 
@@ -17,8 +17,8 @@ queue_size: 65536
 momentum: 0.995
 alpha: 0.4
 
-optimizer: {opt: adamW, lr: 1e-5, weight_decay: 0.02}
-schedular: {sched: cosine, lr: 1e-5, epochs: 15, min_lr: 1e-6, decay_rate: 1, warmup_lr: 1e-6, warmup_epochs: 5, cooldown_epochs: 0}
+optimizer: {opt: adamW, lr: 1e-5, weight_decay: 0.1}
+schedular: {sched: cosine, lr: 1e-5, epochs: 10, min_lr: 1e-6, decay_rate: 1, warmup_lr: 1e-6, warmup_epochs: 3, cooldown_epochs: 0}
 
 # iBOT specific options
 patch_size: 16

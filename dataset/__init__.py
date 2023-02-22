@@ -33,7 +33,7 @@ def create_dataset(dataset, config):
             # transforms.RandomGrayscale(p=0.2),
             transforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
             # transforms.RandomHorizontalFlip(),
-            RandomAugment(2,4,isPIL=True,augs=['Identity','AutoContrast','Equalize','Brightness','Sharpness',
+            RandomAugment(2,2,isPIL=True,augs=['Identity','AutoContrast','Equalize','Brightness','Sharpness',
                                               'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
             transforms.ToTensor(),
         ])
@@ -45,7 +45,7 @@ def create_dataset(dataset, config):
             # transforms.RandomGrayscale(p=0.2),
             transforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
             # transforms.RandomHorizontalFlip(p=0.2),
-            RandomAugment(1,2,isPIL=True,augs=['Identity','AutoContrast','Equalize','Brightness','Sharpness',
+            RandomAugment(1,1,isPIL=True,augs=['Identity','AutoContrast','Equalize','Brightness','Sharpness',
                                               'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
             transforms.ToTensor(),
         ])

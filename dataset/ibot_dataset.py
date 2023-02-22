@@ -45,10 +45,9 @@ class ImageFolderMask(Dataset):
             impression = self.df.iloc[i].impression
             views = self.df.iloc[i].views
             # if split == mode and findings != 'NONE' and impression != 'NONE' and type(findings) != float and type(impression) != float:
-            if split == mode and findings != 'NONE' and type(findings) != float:
-                check_impression = shuffle(pre_caption(findings, 90))
-                if len(check_impression) > 1:
-                    if views == 'AP' or views == 'PA':
+            if split == mode:
+                if views == 'AP' or views == 'PA':
+                    if (impression != 'NONE' and type(impression) != float and len(shuffle(pre_caption(impression, 90))) > 1):
                         self.index_mapping.append(i)
 
         if len(self.img_dset) != len(self.df):
@@ -146,20 +145,13 @@ class ImageFolderMask(Dataset):
         output_1 = self.transforms_1(image)  # jinyu
         output_2 = self.transforms_2(image)
 
-        # findings = self.df.iloc[index].findings
-        impression = self.df.iloc[index].findings
-        # overall = findings + ' ' + impression
+        # impression
+        impression = self.df.iloc[index].impression
+        impression = shuffle(pre_caption(impression, self.max_words))
 
-        # findings = pre_caption(findings, self.max_words)
-        impression = pre_caption(impression, self.max_words)
-        # overall = pre_caption(overall, self.max_words)
+        caption = impression
 
-        # Text augmentation
-        # findings = shuffle(findings)
-        impression = shuffle(impression)
-        # overall = shuffle(overall)
-
-        return output_1, output_2, impression
+        return output_1, output_2, caption
 
 
 class Retrieval_dataset(Dataset):

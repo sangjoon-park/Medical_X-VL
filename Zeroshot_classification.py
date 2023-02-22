@@ -130,14 +130,23 @@ def evaluation(model, data_loader, tokenizer, device, config):
             encoder_output = image_feats
             encoder_att = torch.ones(encoder_output.size()[:-1], dtype=torch.long).to(device)
 
-            output = model.fusion_encoder(encoder_embeds=text_feats,
+            output_t = model.text_encoder(encoder_embeds=text_feats,
                                           attention_mask=text_atts,
                                           encoder_hidden_states=encoder_output,
                                           encoder_attention_mask=encoder_att,
                                           return_dict=True,
                                           mode='fusion'
                                           )
-            score_neg = model.itm_head(output.last_hidden_state[:, 0, :])[:, 1]
+            output_v = model.text_encoder(encoder_embeds=encoder_output,
+                                          attention_mask=encoder_att,
+                                          encoder_hidden_states=text_feats,
+                                          encoder_attention_mask=text_atts,
+                                          return_dict=True,
+                                          mode='fusion'
+                                          )
+            score_neg_t = model.itm_head_t(output_t.last_hidden_state[:, 0, :])[:, 1]
+            score_neg_v = model.itm_head_v(output_v.last_hidden_state[:, 0, :])[:, 1]
+            score_neg = (score_neg_t + score_neg_v) / 2.
 
         # Positive score
         text_input = tokenizer(text_pos, padding='max_length', truncation=True, max_length=90, return_tensors="pt").to(
@@ -155,14 +164,23 @@ def evaluation(model, data_loader, tokenizer, device, config):
             encoder_output = image_feats
             encoder_att = torch.ones(encoder_output.size()[:-1], dtype=torch.long).to(device)
 
-            output = model.fusion_encoder(encoder_embeds=text_feats,
+            output_t = model.text_encoder(encoder_embeds=text_feats,
                                           attention_mask=text_atts,
                                           encoder_hidden_states=encoder_output,
                                           encoder_attention_mask=encoder_att,
                                           return_dict=True,
                                           mode='fusion'
                                           )
-            score_pos = model.itm_head(output.last_hidden_state[:, 0, :])[:, 1]
+            output_v = model.text_encoder(encoder_embeds=encoder_output,
+                                          attention_mask=encoder_att,
+                                          encoder_hidden_states=text_feats,
+                                          encoder_attention_mask=text_atts,
+                                          return_dict=True,
+                                          mode='fusion'
+                                          )
+            score_pos_t = model.itm_head_t(output_t.last_hidden_state[:, 0, :])[:, 1]
+            score_pos_v = model.itm_head_v(output_v.last_hidden_state[:, 0, :])[:, 1]
+            score_pos = (score_pos_t + score_pos_v) / 2.
 
         score = torch.cat([score_neg, score_pos], dim=-1)
         score = F.softmax(score)
