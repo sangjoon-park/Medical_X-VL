@@ -9,7 +9,7 @@ image_res: 224
 batch_size_train: 16
 batch_size_test: 1
 
-queue_size: 65536
+queue_size: 49152
 momentum: 0.995
 vision_width: 768
 embed_dim: 256

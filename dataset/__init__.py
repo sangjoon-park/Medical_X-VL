@@ -11,6 +11,7 @@ from dataset.utils import GaussianBlur
 
 from ibot_utils import DataAugmentationiBOT, NoAugmentationiBOT, FineAugmentationiBOT
 from dataset.ibot_dataset import ImageFolderMask, Retrieval_dataset, Gen_dataset, Cls_dataset, Vqa_dataset
+from health_multimodal.image.data.transforms import create_chest_xray_transform_for_inference, create_chest_xray_transform_for_train
 
 
 def create_dataset(dataset, config):
@@ -26,33 +27,13 @@ def create_dataset(dataset, config):
 
 
     # jinyu: add augmentation
-    pretrain_transform = transforms.Compose([
-            transforms.RandomResizedCrop(config['image_res'],scale=(0.5, 1.0), interpolation=Image.BICUBIC),
-            # transforms.RandomApply([
-            # transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
-            # transforms.RandomGrayscale(p=0.2),
-            transforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
-            # transforms.RandomHorizontalFlip(),
-            RandomAugment(2,2,isPIL=True,augs=['Identity','AutoContrast','Equalize','Brightness','Sharpness',
-                                              'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
-            transforms.ToTensor(),
-        ])
-    # jinyu: add augmentation
-    train_transform = transforms.Compose([
-            transforms.RandomResizedCrop(config['image_res'],scale=(0.75, 1.0), interpolation=Image.BICUBIC),
-            # transforms.RandomApply([
-            # transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
-            # transforms.RandomGrayscale(p=0.2),
-            transforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
-            # transforms.RandomHorizontalFlip(p=0.2),
-            RandomAugment(1,1,isPIL=True,augs=['Identity','AutoContrast','Equalize','Brightness','Sharpness',
-                                              'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
-            transforms.ToTensor(),
-        ])
-    test_transform = transforms.Compose([
-        transforms.Resize((config['image_res'],config['image_res']),interpolation=Image.BICUBIC),
-        transforms.ToTensor(),
-        ])
+    TRANSFORM_RESIZE = 240
+    TRANSFORM_CENTER_CROP_SIZE = 224
+
+    resize = TRANSFORM_RESIZE,
+    center_crop_size = TRANSFORM_CENTER_CROP_SIZE,
+    test_transform = create_chest_xray_transform_for_inference(resize, center_crop_size)
+    train_transform = create_chest_xray_transform_for_train(center_crop_size, scale=(0.7, 1.0))
 
     if dataset == 'pretrain':
         patch_size = config['patch_size']
@@ -64,7 +45,7 @@ def create_dataset(dataset, config):
             pred_aspect_ratio=(0.3, 1 / 0.3),
             pred_shape=config['pred_shape'],
             pred_start_epoch=config['pred_start_epoch'],
-            transforms_1=pretrain_transform,
+            transforms_1=test_transform,
             transforms_2=train_transform
             )
         return dataset

@@ -9,16 +9,16 @@ fusion_config: 'configs/config_fusion.json'
 image_res: 224
 vision_width: 768
 embed_dim: 256
-batch_size: 16
+batch_size: 10
 batch_size_test: 1
 temp: 0.07
 mlm_probability: 0.15
-queue_size: 65536
+queue_size: 40960
 momentum: 0.995
 alpha: 0.4
 
-optimizer: {opt: adamW, lr: 1e-5, weight_decay: 0.1}
-schedular: {sched: cosine, lr: 1e-5, epochs: 10, min_lr: 1e-6, decay_rate: 1, warmup_lr: 1e-6, warmup_epochs: 4, cooldown_epochs: 0}
+optimizer: {opt: adamW, lr: 1e-4, weight_decay: 0.1}
+schedular: {sched: cosine, lr: 1e-4, epochs: 6, min_lr: 1e-5, decay_rate: 1, warmup_lr: 1e-5, warmup_epochs: 2, cooldown_epochs: 0}
 
 # iBOT specific options
 patch_size: 16
@@ -41,7 +41,7 @@ teacher_temp: 0.04
 warmup_teacher_patch_temp: 0.04
 teacher_patch_temp: 0.07
 warmup_teacher_temp_epochs: 3
-use_fp16: False
+use_fp16: True
 clip_grad: 3.0
 drop_path: 0.1
 freeze_last_layer: 1

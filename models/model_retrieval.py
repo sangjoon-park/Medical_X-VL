@@ -7,29 +7,73 @@ from torch import nn
 import torch.nn.functional as F
 import numpy as np
 from fuzzywuzzy import fuzz
-from models.vit import VisionTransformer as VisionTransformer_deit
+from health_multimodal.text.utils import get_cxr_bert
+from health_multimodal.image.model.model import get_biovil_resnet
+from health_multimodal.image.data.transforms import create_chest_xray_transform_for_inference, create_chest_xray_transform_for_train
+from health_multimodal.text.inference_engine import TextInferenceEngine
+import clip
+
+def load_clip(model_path=None, context_length=77):
+    '''
+    FUNCTION: load_clip
+    -------------------------------
+    This function loads in a model with the CLIP model
+    architecture.
+
+    args:
+        * model_path (optional) - path to model weights that the model
+        will be initialized with
+        * pretrained (optional) - if True, will load the pretrained
+        CLIP model
+        * context_length (optional) - length of the maximum number of
+        tokens that can be inputted into the CLIP model
+    '''
+
+    params = {
+        'embed_dim': 768,
+        'image_resolution': 320,
+        'vision_layers': 12,
+        'vision_width': 768,
+        'vision_patch_size': 16,
+        'context_length': context_length,
+        'vocab_size': 49408,
+        'transformer_width': 512,
+        'transformer_heads': 8,
+        'transformer_layers': 12
+    }
+
+    # set device
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    model, preprocess = clip.load("ViT-B/32", device=device, jit=False)
+    print("Loaded in pretrained model.")
+    model.load_state_dict(torch.load(model_path, map_location=device))
+    return model
 
 class XVLModel(nn.Module):
     def __init__(self,
-                 tokenizer = None,
                  config = None,
                  ):
         super().__init__()
 
-        self.tokenizer = tokenizer
         self.distill = config['distill']
         embed_dim = config['embed_dim']
         vision_width = config['vision_width']
 
-        visual_encoder = vit_base(
-            img_size=(config['image_res'], config['image_res']),
-            patch_size=config['patch_size'],
-            drop_path_rate=config['drop_path'],
-        )
-        self.visual_encoder = visual_encoder
+        clip = load_clip(model_path='./clip.pt').float()
+        self.visual_encoder = clip.visual
 
-        bert_config = BertConfig.from_json_file(config['bert_config'])
-        self.text_encoder = BertModel(config=bert_config, add_pooling_layer=False)
+        self.tokenizer, self.text_encoder = get_cxr_bert()
+
+        # bert_config = BertConfig.from_json_file(config['bert_config'])
+        # self.text_encoder = BertModel(config=bert_config, add_pooling_layer=False)
+
+        self.text_engine = TextInferenceEngine(text_model=self.text_encoder, tokenizer=self.tokenizer)
+
+        vision_width = config['vision_width']
+        fusion_config = BertConfig.from_json_file(config['fusion_config'])
+
+        self.fusion_encoder = BertModel(config=fusion_config, add_pooling_layer=False)
 
         text_width = self.text_encoder.config.hidden_size
         self.vision_proj = nn.Linear(vision_width, embed_dim)
@@ -39,23 +83,23 @@ class XVLModel(nn.Module):
         self.queue_size = config['queue_size']
         self.momentum = config['momentum']
 
-        self.itm_head_v = nn.Linear(text_width, 2)
-        self.itm_head_t = nn.Linear(text_width, 2)
+        self.itm_head = nn.Linear(text_width, 2)
 
         # create momentum models
-        visual_encoder_m = vit_base(
-            img_size=(config['image_res'], config['image_res']),
-            patch_size=config['patch_size'],
-        )
-        self.visual_encoder_m = visual_encoder_m
+        clip_m = load_clip(model_path='./clip.pt', context_length=77).float()
+        self.visual_encoder_m = clip_m.visual
 
         self.vision_proj_m = nn.Linear(vision_width, embed_dim)
-        self.text_encoder_m = BertModel(config=bert_config, add_pooling_layer=False)
+        _, self.text_encoder_m = get_cxr_bert()
+
+        self.fusion_encoder_m = BertModel(config=fusion_config, add_pooling_layer=False)
+
         self.text_proj_m = nn.Linear(text_width, embed_dim)
 
         self.model_pairs = [[self.visual_encoder,self.visual_encoder_m],
                             [self.vision_proj,self.vision_proj_m],
                             [self.text_encoder, self.text_encoder_m],
+                            [self.fusion_encoder, self.fusion_encoder_m],
                             [self.text_proj,self.text_proj_m],
                            ]
         self.copy_params()

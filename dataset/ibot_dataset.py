@@ -45,10 +45,10 @@ class ImageFolderMask(Dataset):
             impression = self.df.iloc[i].impression
             views = self.df.iloc[i].views
             # if split == mode and findings != 'NONE' and impression != 'NONE' and type(findings) != float and type(impression) != float:
-            if split == mode:
-                if views == 'AP' or views == 'PA':
-                    if (impression != 'NONE' and type(impression) != float and len(shuffle(pre_caption(impression, 90))) > 1):
-                        self.index_mapping.append(i)
+            # if split == mode:
+            #     # if views == 'AP' or views == 'PA':
+            if (impression != 'NONE' and type(impression) != float and len(shuffle(pre_caption(impression, 120))) > 1):
+                self.index_mapping.append(i)
 
         if len(self.img_dset) != len(self.df):
             raise AssertionError()
@@ -138,12 +138,12 @@ class ImageFolderMask(Dataset):
         # image_path = self.ann[index]['image']
         # image = cv2.imread(str(image_path), 0)
 
-        image = self._resize_img(image, 224)
-        image = Image.fromarray(image).convert('RGB')
+        image = self._resize_img(image, 512)
+        image = Image.fromarray(image)
 
         # Image augmentation
-        output_1 = self.transforms_1(image)  # jinyu
-        output_2 = self.transforms_2(image)
+        output_1 = self.transforms_1(image) / 255.  # jinyu
+        output_2 = self.transforms_2(image) / 255.
 
         # impression
         impression = self.df.iloc[index].impression

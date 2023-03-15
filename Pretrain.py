@@ -49,24 +49,6 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     step_size = 100
     warmup_iterations = warmup_steps * step_size
 
-    # define iBOT loss
-    same_dim = config['shared_head'] or config['shared_head_teacher']
-    ibot_loss = iBOTLoss(
-        config['out_dim'],
-        config['out_dim'] if same_dim else config['patch_out_dim'],
-        config['global_crops_number'],
-        config['local_crops_number'],
-        config['warmup_teacher_temp'],
-        config['teacher_temp'],
-        config['warmup_teacher_patch_temp'],
-        config['teacher_patch_temp'],
-        config['warmup_teacher_temp_epochs'],
-        config['schedular']['epochs'],
-        lambda1=config['lambda1'],
-        lambda2=config['lambda2'],
-        mim_start_epoch=config['pred_start_epoch'],
-    ).cuda()
-
     if args.distributed:
         data_loader.sampler.set_epoch(epoch)
 
@@ -89,9 +71,15 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
             # calculate iteration
         it = len(data_loader) * epoch + i
 
-        loss_mlm, loss_ita, loss_itm = model(image, image_aug, impression, epoch, alpha = alpha)
+        if fp16_scaler is None:
+            loss_mlm, loss_ita, loss_itm = model(image, image_aug, impression, epoch, alpha=alpha)
 
-        loss = loss_mlm + loss_ita + loss_itm
+            loss = loss_mlm + loss_ita + loss_itm
+        else:
+            with torch.cuda.amp.autocast():
+                loss_mlm, loss_ita, loss_itm = model(image, image_aug, impression, epoch, alpha = alpha)
+
+                loss = loss_mlm + loss_ita + loss_itm
 
         if fp16_scaler is None:
             loss.backward()
@@ -102,7 +90,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
             optimizer.step()
         else:
             fp16_scaler.scale(loss).backward()
-            if args.clip_grad:
+            if config['clip_grad']:
                 fp16_scaler.unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
                 param_norms = ibot_utils.clip_gradients(model.module.visual_encoder, config['clip_grad'])
             ibot_utils.cancel_gradients_last_layer(epoch, model.module.visual_encoder,
@@ -118,6 +106,12 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
 
         if epoch == 0 and i % step_size == 0 and i <= warmup_iterations:
             scheduler.step(i // step_size)
+
+        if it % 1000 == 0 and it > 10000:
+            save_obj = {
+                'model': model.module.state_dict(),
+            }
+            torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_it_{}.pth'.format(it)))
 
             # gather the stats from all processes
     metric_logger.synchronize_between_processes()
@@ -165,7 +159,7 @@ def main(args, config):
 
     #### Model ####
     print("Creating model")
-    model = XVLModel(data_loader=data_loader, config=config, text_encoder=args.text_encoder, tokenizer=tokenizer)
+    model = XVLModel(config=config)
 
     model = model.to(device)
 

@@ -9,46 +9,72 @@ from torch import nn
 import numpy as np
 import random
 from dataset.utils import split
+from health_multimodal.text.utils import get_cxr_bert
+# from health_multimodal.image.model.model import get_biovil_resnet
+from health_multimodal.image.data.transforms import create_chest_xray_transform_for_inference, create_chest_xray_transform_for_train
+from health_multimodal.text.inference_engine import TextInferenceEngine
+import clip
+
+
+def load_clip(model_path=None, context_length=77):
+    '''
+    FUNCTION: load_clip
+    -------------------------------
+    This function loads in a model with the CLIP model
+    architecture.
+
+    args:
+        * model_path (optional) - path to model weights that the model
+        will be initialized with
+        * pretrained (optional) - if True, will load the pretrained
+        CLIP model
+        * context_length (optional) - length of the maximum number of
+        tokens that can be inputted into the CLIP model
+    '''
+
+    params = {
+        'embed_dim': 768,
+        'image_resolution': 320,
+        'vision_layers': 12,
+        'vision_width': 768,
+        'vision_patch_size': 16,
+        'context_length': context_length,
+        'vocab_size': 49408,
+        'transformer_width': 512,
+        'transformer_heads': 8,
+        'transformer_layers': 12
+    }
+
+    # set device
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    model, preprocess = clip.load("ViT-B/32", device=device, jit=False)
+    print("Loaded in pretrained model.")
+    msg = model.load_state_dict(torch.load(model_path, map_location=device))
+    print('load checkpoint: {}'.format(model_path))
+    print(msg)
+    return model
 
 
 class XVLModel(nn.Module):
     def __init__(self,
-                 data_loader,
-                 text_encoder=None,
-                 tokenizer=None,
                  config=None,
-                 temp=0.07,
                  ):
         super().__init__()
 
-        self.tokenizer = tokenizer
+        clip = load_clip(model_path='./clip.pt').float()
+        self.visual_encoder = clip.visual
+
+        self.tokenizer, self.text_encoder = get_cxr_bert()
+        self.text_engine = TextInferenceEngine(text_model=self.text_encoder, tokenizer=self.tokenizer)
+
         self.mlm_probability = config['mlm_probability']
         embed_dim = config['embed_dim']
 
-        self.visual_encoder = vit_base(
-            img_size=(config['image_res'], config['image_res']),
-            patch_size=config['patch_size'],
-            drop_path_rate=config['drop_path'],
-        )
-
-        # Load MIMIC pre-trained weights
-        state_dict = torch.load('./pretrained.pth')['teacher']
-        pos_embed_reshaped = interpolate_pos_embed(state_dict['backbone.pos_embed'],
-                                                   self.visual_encoder)
-        state_dict['backbone.pos_embed'] = pos_embed_reshaped
-        state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
-        state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
-        state_dict = {k.replace("last_layer", ""): v for k, v in state_dict.items()}
-        msg = self.visual_encoder.load_state_dict(state_dict, strict=False)
-        print(msg)
-
         vision_width = config['vision_width']
-        bert_config = BertConfig.from_json_file(config['bert_config'])
+        fusion_config = BertConfig.from_json_file(config['fusion_config'])
 
-        url = "microsoft/BiomedVLP-CXR-BERT-specialized"
-
-        # self.text_encoder = BertForMaskedLM(config=bert_config)
-        self.text_encoder = BertForMaskedLM.from_pretrained(url, trust_remote_code=True, config=bert_config)
+        self.fusion_encoder = BertForMaskedLM(config=fusion_config)
 
         text_width = self.text_encoder.config.hidden_size
         self.vision_proj = nn.Linear(vision_width, embed_dim)
@@ -57,26 +83,23 @@ class XVLModel(nn.Module):
         self.temp = nn.Parameter(torch.ones([]) * config['temp'])
         self.queue_size = config['queue_size']
         self.momentum = config['momentum']
-        self.itm_head_v = nn.Linear(text_width, 2)
-        self.itm_head_t = nn.Linear(text_width, 2)
+        self.itm_head = nn.Linear(text_width, 2)
 
         # create momentum models
-        self.visual_encoder_m = vit_base(
-            img_size=(config['image_res'], config['image_res']),
-            patch_size=config['patch_size'],
-        )
-
-        msg = self.visual_encoder_m.load_state_dict(state_dict, strict=False)
-        print(msg)
+        clip_m = load_clip(model_path='./clip.pt', context_length=77).float()
+        self.visual_encoder_m = clip_m.visual
 
         self.vision_proj_m = nn.Linear(vision_width, embed_dim)
 
-        self.text_encoder_m = BertForMaskedLM.from_pretrained(url, trust_remote_code=True, config=bert_config)
+        _, self.text_encoder_m = get_cxr_bert()
+        self.fusion_encoder_m = BertForMaskedLM(config=fusion_config)
+
         self.text_proj_m = nn.Linear(text_width, embed_dim)
 
         self.model_pairs = [[self.visual_encoder, self.visual_encoder_m],
                             [self.vision_proj, self.vision_proj_m],
                             [self.text_encoder, self.text_encoder_m],
+                            [self.fusion_encoder, self.fusion_encoder_m],
                             [self.text_proj, self.text_proj_m],
                             ]
 
@@ -90,57 +113,41 @@ class XVLModel(nn.Module):
         self.image_queue = nn.functional.normalize(self.image_queue, dim=0)
         self.text_queue = nn.functional.normalize(self.text_queue, dim=0)
 
-        # for param in self.text_encoder.parameters():
-        #     param.requires_grad = False
-        # for param in self.text_encoder_m.parameters():
-        #     param.requires_grad = False
-
         self.config = config
 
     def forward(self, image, image_aug, text, epoch, alpha=0):
         with torch.no_grad():
             self.temp.clamp_(0.001, 0.5)
 
-        bs = image.size(0)
-
         caption = text.copy()
-        text = self.tokenizer(text, padding='longest', truncation=True, max_length=120, return_tensors="pt").to(image.device)
 
-        # if epoch >= self.config['schedular']['warmup_epochs']:
-        #     with torch.no_grad():
-        #         image_embeds = self.visual_encoder(image)
-        #         image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
-        #
-        #         image_feat = F.normalize(self.vision_proj(image_embeds[:, 0, :]), dim=-1)
-        #
-        #         text_output = self.text_encoder.bert(text.input_ids, attention_mask=text.attention_mask,
-        #                                              return_dict=True, mode='text')
-        #         text_embeds = text_output.last_hidden_state
-        #         text_feat = F.normalize(self.text_proj(text_embeds[:, 0, :]), dim=-1)
-        # else:
-        image_embeds = self.visual_encoder(image)
+        bs = image.size(0)
+        text = self.text_engine.tokenize_input_prompts(prompts=text, verbose=True).to(image.device)
+
+        # text = self.tokenizer.batch_encode_plus(batch_text_or_text_pairs=text,
+        #                                                     add_special_tokens=True,
+        #                                                     padding='longest',
+        #                                                     return_tensors='pt').to(image.device)
+
+        image_embeds = self.visual_encoder(image_aug)
         image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
 
         image_feat = F.normalize(self.vision_proj(image_embeds[:, 0, :]), dim=-1)
 
-        text_output = self.text_encoder.bert(text.input_ids, attention_mask=text.attention_mask,
-                                             return_dict=True, mode='text')
+        text_output = self.text_encoder(text.input_ids, attention_mask=text.attention_mask,
+                                             return_dict=True)
         text_embeds = text_output.last_hidden_state
         text_feat = F.normalize(self.text_proj(text_embeds[:, 0, :]), dim=-1)
 
         # get momentum features
         with torch.no_grad():
             self._momentum_update()
-            image_embeds_m = self.visual_encoder_m(image_aug)
+            image_embeds_m = self.visual_encoder_m(image)
             image_feat_m = F.normalize(self.vision_proj_m(image_embeds_m[:, 0, :]), dim=-1)
-
-            # jinyu: local features of visual part
-            image_feat_m_l = F.normalize(self.vision_proj_m(image_embeds_m[:, 1:, :]), dim=-1)
-            image_feat_m_l = self.patch_pooling(image_feat_m_l)  # pooling for image patches
             image_feat_all = torch.cat([image_feat_m.t(), self.image_queue.clone().detach()], dim=1)
 
-            text_output_m = self.text_encoder_m.bert(text.input_ids, attention_mask=text.attention_mask,
-                                                     return_dict=True, mode='text')
+            text_output_m = self.text_encoder_m(text.input_ids, attention_mask=text.attention_mask,
+                                                     return_dict=True)
             text_feat_m = F.normalize(self.text_proj_m(text_output_m.last_hidden_state[:, 0, :]), dim=-1)
 
             # jinyu: local features of text part
@@ -159,11 +166,10 @@ class XVLModel(nn.Module):
                 sent_len = len(sentences)
                 for i in range(sent_len):
                     sentence = sentences[i]
-                    sentence = self.tokenizer(sentence, padding='longest', truncation=True, max_length=90, return_tensors="pt").to(
-                        image.device)
+                    sentence = self.text_engine.tokenize_input_prompts(prompts=sentence, verbose=True).to(image.device)
                     text_input_l, text_attention_mask_l = sentence.input_ids, sentence.attention_mask
-                    text_output_l = self.text_encoder_m.bert(text_input_l, attention_mask=text_attention_mask_l,
-                                                         return_dict=True, mode='text')
+                    text_output_l = self.text_encoder_m(text_input_l, attention_mask=text_attention_mask_l,
+                                                             return_dict=True)
                     text_feat_l = F.normalize(self.text_proj_m(text_output_l.last_hidden_state[:, 0, :]), dim=-1)
                     text_feat_l = text_feat_l.view(1, 1, text_feat_l.size(1))
                     text_feat_m_l_.append(text_feat_l)
@@ -191,17 +197,13 @@ class XVLModel(nn.Module):
             sim_i2t_targets = alpha * F.softmax(sim_i2t_m, dim=1) + (1 - alpha) * sim_targets
             sim_t2i_targets = alpha * F.softmax(sim_t2i_m, dim=1) + (1 - alpha) * sim_targets
 
+        loss_t2i_inMod_l = self.in_batch_g2l_loss(text_feat_m_l, image_feat, self.temp, text_attention_mask_l_all)
+
         sim_i2t = image_feat @ text_feat_all / self.temp
         sim_t2i = text_feat @ image_feat_all / self.temp
 
         loss_i2t = -torch.sum(F.log_softmax(sim_i2t, dim=1) * sim_i2t_targets, dim=1).mean()
         loss_t2i = -torch.sum(F.log_softmax(sim_t2i, dim=1) * sim_t2i_targets, dim=1).mean()
-
-        loss_t2t_inMod_l = self.in_batch_g2l_loss(text_feat_m_l, text_feat, self.temp, text_attention_mask_l_all)
-        loss_i2i_inMod_l = self.in_batch_g2l_loss(image_feat_m_l, image_feat, self.temp)
-
-        loss_t2i_inMod_l = self.in_batch_g2l_loss(text_feat_m_l, image_feat, self.temp, text_attention_mask_l_all)
-        loss_i2t_inMod_l = self.in_batch_g2l_loss(image_feat_m_l, text_feat, self.temp)
 
         # jinyu: add in-modality g2g loss
         sim_i2i = image_feat @ image_feat_all / self.temp
@@ -210,13 +212,13 @@ class XVLModel(nn.Module):
         loss_i2i = -torch.sum(F.log_softmax(sim_i2i, dim=1) * sim_targets, dim=1).mean()
         loss_t2t = -torch.sum(F.log_softmax(sim_t2t, dim=1) * sim_targets, dim=1).mean()
 
-        loss_ita = (loss_i2t_inMod_l + loss_t2i_inMod_l + loss_t2t_inMod_l + loss_i2i_inMod_l + loss_i2t + loss_t2i + loss_i2i + loss_t2t) / 8.
+        loss_ita = (loss_i2t + loss_t2i + loss_i2i + loss_t2t + loss_t2i_inMod_l) / 5.
 
         self._dequeue_and_enqueue(image_feat_m, text_feat_m)
 
         ###=================================###
         # forward the positve image-text pair
-        output_pos = self.text_encoder.bert(encoder_embeds=text_embeds,
+        output_pos = self.fusion_encoder.bert(encoder_embeds=text_embeds,
                                             attention_mask=text.attention_mask,
                                             encoder_hidden_states=image_embeds,
                                             encoder_attention_mask=image_atts,
@@ -264,7 +266,7 @@ class XVLModel(nn.Module):
         image_embeds_all = torch.cat([image_embeds_neg, image_embeds], dim=0)
         image_atts_all = torch.cat([image_atts, image_atts], dim=0)
 
-        output_neg = self.text_encoder.bert(encoder_embeds=text_embeds_all,
+        output_neg = self.fusion_encoder.bert(encoder_embeds=text_embeds_all,
                                             attention_mask=text_atts_all,
                                             encoder_hidden_states=image_embeds_all,
                                             encoder_attention_mask=image_atts_all,
@@ -272,35 +274,13 @@ class XVLModel(nn.Module):
                                             mode='fusion',
                                             )
 
-        output_pos_ = self.text_encoder.bert(encoder_embeds=image_embeds,
-                                                   attention_mask=torch.ones(
-                                                       (image_embeds.size(0), image_embeds.size(1))).to(
-                                                       image_embeds.device),
-                                                   encoder_hidden_states=text_embeds,
-                                                   encoder_attention_mask=text.attention_mask,
-                                                   return_dict=True,
-                                                   mode='fusion')
+        vl_embeddings = torch.cat([output_pos.last_hidden_state[:, 0, :], output_neg.last_hidden_state[:, 0, :]], dim=0)
 
-        output_neg_ = self.text_encoder.bert(encoder_embeds=image_embeds_all,
-                                                 attention_mask=torch.ones(
-                                                     (image_embeds_all.size(0), image_embeds_all.size(1))).to(
-                                                     image_embeds_all.device),
-                                                 encoder_hidden_states=text_embeds_all,
-                                                 encoder_attention_mask=text_atts_all,
-                                                 return_dict=True,
-                                                 mode='fusion')
-
-        vl_embeddings_t = torch.cat([output_pos.last_hidden_state[:, 0, :], output_neg.last_hidden_state[:, 0, :]], dim=0)
-        vl_embeddings_v = torch.cat([output_pos_.last_hidden_state[:, 0, :], output_neg_.last_hidden_state[:, 0, :]], dim=0)
-
-        vl_output_t = self.itm_head_t(vl_embeddings_t)
-        vl_output_v = self.itm_head_v(vl_embeddings_v)
+        vl_output = self.itm_head(vl_embeddings)
 
         itm_labels = torch.cat([torch.ones(bs, dtype=torch.long), torch.zeros(2 * bs, dtype=torch.long)],
                                dim=0).to(image.device)
-        loss_itm_t = F.cross_entropy(vl_output_t, itm_labels)
-        loss_itm_v = F.cross_entropy(vl_output_v, itm_labels)
-        loss_itm = loss_itm_t + loss_itm_v
+        loss_itm = F.cross_entropy(vl_output, itm_labels)
 
         ##================= MLM ========================##
         input_ids = text.input_ids.clone()
@@ -311,14 +291,19 @@ class XVLModel(nn.Module):
                                       probability_matrix=probability_matrix)
 
         with torch.no_grad():
-            logits_m = self.text_encoder_m(input_ids,
+            text_output_m = self.text_encoder_m(input_ids, attention_mask=text.attention_mask,
+                                                 return_dict=True)
+            logits_m = self.fusion_encoder_m(encoder_embeds=text_output_m.last_hidden_state,
                                            attention_mask=text.attention_mask,
                                            encoder_hidden_states=image_embeds_m,
                                            encoder_attention_mask=image_atts,
                                            return_dict=True,
                                            return_logits=True,
+                                           mode='fusion'
                                            )
-        mlm_output = self.text_encoder(input_ids,
+        text_output = self.text_encoder.bert(input_ids, attention_mask=text.attention_mask,
+                                               return_dict=True)
+        mlm_output = self.fusion_encoder(encoder_embeds=text_output.last_hidden_state,
                                        attention_mask=text.attention_mask,
                                        encoder_hidden_states=image_embeds,
                                        encoder_attention_mask=image_atts,
@@ -326,8 +311,8 @@ class XVLModel(nn.Module):
                                        labels=labels,
                                        soft_labels=F.softmax(logits_m, dim=-1),
                                        alpha=alpha,
+                                       mode='fusion'
                                        )
-
         loss_mlm = mlm_output.loss
 
         return loss_mlm, loss_ita, loss_itm
