@@ -58,10 +58,12 @@ class XVLModel(nn.Module):
 
         self.distill = config['distill']
         embed_dim = config['embed_dim']
-        vision_width = config['vision_width']
 
-        clip = load_clip(model_path='./clip.pt').float()
-        self.visual_encoder = clip.visual
+        self.visual_encoder = vit_base(
+            img_size=(config['image_res'], config['image_res']),
+            patch_size=config['patch_size'],
+            drop_path_rate=config['drop_path'],
+        )
 
         self.tokenizer, self.text_encoder = get_cxr_bert()
 
@@ -86,8 +88,11 @@ class XVLModel(nn.Module):
         self.itm_head = nn.Linear(text_width, 2)
 
         # create momentum models
-        clip_m = load_clip(model_path='./clip.pt', context_length=77).float()
-        self.visual_encoder_m = clip_m.visual
+        self.visual_encoder_m = vit_base(
+            img_size=(config['image_res'], config['image_res']),
+            patch_size=config['patch_size'],
+            drop_path_rate=config['drop_path'],
+        )
 
         self.vision_proj_m = nn.Linear(vision_width, embed_dim)
         _, self.text_encoder_m = get_cxr_bert()

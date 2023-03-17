@@ -62,8 +62,22 @@ class XVLModel(nn.Module):
                  ):
         super().__init__()
 
-        clip = load_clip(model_path='./clip.pt').float()
-        self.visual_encoder = clip.visual
+        self.visual_encoder = vit_base(
+            img_size=(config['image_res'], config['image_res']),
+            patch_size=config['patch_size'],
+            drop_path_rate=config['drop_path'],
+        )
+
+        # Load MIMIC pre-trained weights
+        state_dict = torch.load('./pretrained.pth')['teacher']
+        pos_embed_reshaped = interpolate_pos_embed(state_dict['backbone.pos_embed'],
+                                                   self.visual_encoder)
+        state_dict['backbone.pos_embed'] = pos_embed_reshaped
+        state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
+        state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+        state_dict = {k.replace("last_layer", ""): v for k, v in state_dict.items()}
+        msg = self.visual_encoder.load_state_dict(state_dict, strict=False)
+        print(msg)
 
         self.tokenizer, self.text_encoder = get_cxr_bert()
         self.text_engine = TextInferenceEngine(text_model=self.text_encoder, tokenizer=self.tokenizer)
@@ -86,8 +100,13 @@ class XVLModel(nn.Module):
         self.itm_head = nn.Linear(text_width, 2)
 
         # create momentum models
-        clip_m = load_clip(model_path='./clip.pt', context_length=77).float()
-        self.visual_encoder_m = clip_m.visual
+        self.visual_encoder_m = vit_base(
+            img_size=(config['image_res'], config['image_res']),
+            patch_size=config['patch_size'],
+            drop_path_rate=config['drop_path'],
+        )
+        msg = self.visual_encoder.load_state_dict(state_dict, strict=False)
+        print(msg)
 
         self.vision_proj_m = nn.Linear(vision_width, embed_dim)
 
