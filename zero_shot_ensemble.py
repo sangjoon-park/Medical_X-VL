@@ -132,6 +132,14 @@ test_true = make_true_labels(cxr_true_labels_path=cxr_true_labels_path, cxr_labe
 
 # evaluate model
 cxr_results = evaluate(test_pred, test_true, cxr_labels)
+Atelectasis_auc = cxr_results['Atelectasis_auc']
+Cardiomegaly_auc = cxr_results['Cardiomegaly_auc']
+Edema_auc = cxr_results['Edema_auc']
+Effusion_auc = cxr_results['Pleural Effusion_auc']
+Fracture_auc = cxr_results['Fracture_auc']
+Pneumonia_auc = cxr_results['Pneumonia_auc']
+Pneumothorax_auc = cxr_results['Pneumothorax_auc']
+Mean_auc = (Atelectasis_auc + Cardiomegaly_auc + Edema_auc + Effusion_auc + Fracture_auc + Pneumonia_auc + Pneumothorax_auc) / 7.
 
 # boostrap evaluations for 95% confidence intervals
 bootstrap_results = bootstrap(test_pred, test_true, cxr_labels)

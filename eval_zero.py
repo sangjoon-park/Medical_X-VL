@@ -230,7 +230,7 @@ def bootstrap(y_pred, y_true, cxr_labels, n_samples=1000, label_idx_map=None):
     idx = np.arange(len(y_true))
 
     boot_stats = []
-    for i in range(n_samples):
+    for i in tqdm(range(n_samples)):
         sample = resample(idx, replace=True, random_state=i)
         y_pred_sample = y_pred[sample]
         y_true_sample = y_true[sample]

@@ -14,6 +14,8 @@ from tqdm.notebook import tqdm
 from pathlib import Path
 from dataset.utils import pre_caption
 from health_multimodal.image.data.transforms import create_chest_xray_transform_for_inference, create_chest_xray_transform_for_train
+from error_generator import ErrorGenerator
+import json
 
 import torch.nn as nn
 from torchvision.transforms import Compose, Normalize, Resize, InterpolationMode
@@ -41,14 +43,28 @@ class CXRTestDataset(data.Dataset):
     """
     def __init__(
         self, 
-        img_path: str, 
+        img_path: str,
+        report_path: str,
         transform = None,
         max_words = 120
     ):
         super().__init__()
         self.img_dset = h5py.File(img_path, 'r')['cxr']
+        self.df = pd.read_csv(report_path)
         self.max_words = max_words
         self.transforms = transform
+
+        corpus_dir = '/COVID_8TB/sangjoon/mimic_CXR/mimic_impressions_final.csv'
+        label_dir = '/COVID_8TB/sangjoon/mimic-cxr/mimic-cxr-2.0.0-chexpert.csv'
+        pair_dir = './entire_pair_final.json'
+
+        with open(pair_dir, 'r') as f:
+            entire_pair = json.load(f, encoding='cp949')
+
+        entire_texts = pd.read_csv(corpus_dir)
+        entire_labels = pd.read_csv(label_dir)
+
+        self.error_generator = ErrorGenerator(entire_texts, entire_labels, entire_pair)
             
     def __len__(self):
         return len(self.img_dset)
@@ -116,7 +132,17 @@ class CXRTestDataset(data.Dataset):
         # elif target == 1:
         #     report = 'Findings suggesting pneumonia.'
 
-        return output
+        impression = self.df.iloc[index].impression
+        impression = pre_caption(impression, self.max_words)
+
+        error_imp = self.error_generator(impression, L=True)
+
+        if impression != error_imp:
+            label = 1
+        else:
+            label = 0
+
+        return output, error_imp, label
 
 
 # def zeroshot_classifier(image, classnames, templates, model, context_length=120):
@@ -185,7 +211,7 @@ class CXRTestDataset(data.Dataset):
 #         zeroshot_weights = torch.stack(zeroshot_weights, dim=1)
 #     return zeroshot_weights
 
-def predict(loader, model, labels, positive, class_names, template, softmax_eval=True, verbose=0):
+def predict(loader, model, verbose=0):
     """
     FUNCTION: predict
     ---------------------------------
@@ -202,15 +228,20 @@ def predict(loader, model, labels, positive, class_names, template, softmax_eval
         
     Returns numpy array, predictions on all test data samples. 
     """
+    y_true = []
+
     y_pred = []
     with torch.no_grad():
         for i, data in enumerate(tqdm(loader)):
-            image = data
-            image = image.cuda()
-            if positive:
-                image = image.repeat(1, 1, 1, 1)
+            image = data[0]
+            texts = data[1]
+            label = data[2]
 
-            bs = image.size(0)
+            y_true.append(label)
+
+            image = image.cuda()
+
+            # bs = image.size(0)
 
             with torch.no_grad():
                 image_feat = model.visual_encoder(image)
@@ -220,115 +251,36 @@ def predict(loader, model, labels, positive, class_names, template, softmax_eval
             image_feats = image_feat
 
             logits = []
-            for class_name in class_names:
-                text = template.format(class_name)
 
-                texts = []
+            text_input = model.text_engine.tokenize_input_prompts(prompts=texts, verbose=True).to(image.device)
 
-                if 'Atelectasis' in text:
-                    if positive:
-                        texts.append(pre_caption('Atelectasis.'))
-                        # texts.append(pre_caption('Platelike opacity likely represents atelectasis.'))
-                        # texts.append(pre_caption('Geometric opacity likely represents atelectasis.'))
-                        # texts.append(pre_caption('Atelectasis is present.'))
-                        # texts.append(pre_caption('Basilar opacity and volume loss is likely due to atelectasis.'))
-                        # texts.append(pre_caption('Patchy atelectasis is seen.'))
-                    else:
-                        texts.append(pre_caption('No atelectasis.'))
+            with torch.no_grad():
+                text_output = model.text_encoder(text_input.input_ids, attention_mask=text_input.attention_mask,
+                                                return_dict=True)
+                text_feat = text_output.last_hidden_state
+                # text_embed = F.normalize(model.text_proj(text_feat[:, 0, :]), dim=-1)
 
-                if 'Cardiomegaly' in text:
-                    if positive:
-                        texts.append(pre_caption('Cardiomegaly.'))
-                        # texts.append(pre_caption('The heart is mildly enlarged.'))
-                        # texts.append(pre_caption('Cardiomegaly is present.'))
-                        # texts.append(pre_caption('The heart shadow is enlarged.'))
-                        # texts.append(pre_caption('The cardiac silhouette is enlarged.'))
-                        # texts.append(pre_caption('Cardiac enlargement is seen.'))
-                    else:
-                        texts.append(pre_caption('No cardiomegaly.'))
+                text_feats = text_feat
+                text_atts = text_input.attention_mask
 
-                if 'Edema' in text:
-                    if positive:
-                        texts.append(pre_caption('Edema.'))
-                        # texts.append(pre_caption('Mild interstitial pulmonary edema is present.'))
-                        # texts.append(pre_caption('The presence of hazy opacity suggests interstitial pulmonary edema.'))
-                        # texts.append(pre_caption('Moderate alveolar edema is present.'))
-                        # texts.append(pre_caption('Mild diffuse opacity likely represents pulmonary edema.'))
-                        # texts.append(pre_caption('Cardiogenic edema likely is present.'))
-                    else:
-                        texts.append(pre_caption('No edema.'))
+                encoder_output = image_feats
+                encoder_att = torch.ones(encoder_output.size()[:-1], dtype=torch.long).cuda()
 
-                if 'Fracture' in text:
-                    if positive:
-                        texts.append(pre_caption('Fracture.'))
-                        # texts.append(pre_caption('An angulated fracture is present.'))
-                        # texts.append(pre_caption('An oblique radiolucent line suggests a fracture.'))
-                        # texts.append(pre_caption('A cortical step off indicates the presence of a fracture.'))
-                        # texts.append(pre_caption('A comminuted displaced fracture is present.'))
-                        # texts.append(pre_caption('A fracture is present.'))
-                    else:
-                        texts.append(pre_caption('No fracture.'))
-
-                if 'Pleural Effusion' in text:
-                    if positive:
-                        texts.append(pre_caption('Pleural effusion.'))
-                        # texts.append(pre_caption('A pleural effusion is present.'))
-                        # texts.append(pre_caption('Blunting of the costophrenic angles represents pleural effusions.'))
-                        # texts.append(pre_caption('Trace pleural fluid is present.'))
-                        # texts.append(pre_caption('The pleural space is partially filled with fluid.'))
-                        # texts.append(pre_caption('Layering pleural effusions are present.'))
-                    else:
-                        texts.append(pre_caption('No pleural effusion.'))
-
-                if 'Pneumonia' in text:
-                    if positive:
-                        texts.append(pre_caption('Pneumonia.'))
-                        # texts.append(pre_caption('A consolidation at the base likely represents pneumonia.'))
-                        # texts.append(pre_caption('Pneumonia is present.'))
-                        # texts.append(pre_caption('The presence of air bronchograms suggest pneumonia.'))
-                        # texts.append(pre_caption('A fluffy opacity suggests pneumonia.'))
-                        # texts.append(pre_caption('A pulmonary opacity with ill defined borders likely represents pneumonia.'))
-                    else:
-                        texts.append(pre_caption('No pneumonia.'))
-
-                if 'Pneumothorax' in text:
-                    if positive:
-                        texts.append(pre_caption('Pneumothorax.'))
-                        # texts.append(pre_caption('An apical pneumothorax is present.'))
-                        # texts.append(pre_caption('A basilar pneumothorax is seen.'))
-                        # texts.append(pre_caption('A medial pneumothorax is present adjacent to the heart.'))
-                        # texts.append(pre_caption('A lateral pleural line suggests pneumothorax.'))
-                        # texts.append(pre_caption('Pleural air is present.'))
-                    else:
-                        texts.append(pre_caption('No pneumothorax.'))
-
-
-                text_input = model.text_engine.tokenize_input_prompts(prompts=texts, verbose=True).to(image.device)
-
-                with torch.no_grad():
-                    text_output = model.text_encoder(text_input.input_ids, attention_mask=text_input.attention_mask,
-                                                    return_dict=True)
-                    text_feat = text_output.last_hidden_state
-                    # text_embed = F.normalize(model.text_proj(text_feat[:, 0, :]), dim=-1)
-
-                    text_feats = text_feat
-                    text_atts = text_input.attention_mask
-
-                    encoder_output = image_feats
-                    encoder_att = torch.ones(encoder_output.size()[:-1], dtype=torch.long).cuda()
-
-                    output = model.fusion_encoder(encoder_embeds=text_feats,
-                                                  attention_mask=text_atts,
-                                                  encoder_hidden_states=encoder_output,
-                                                  encoder_attention_mask=encoder_att,
-                                                  return_dict=True,
-                                                  mode='fusion'
-                                                  )
-                    score = model.itm_head(output.last_hidden_state[:, 0, :])[:, 1]
-                    score = score.mean()
-                logits.append(score.cpu().detach().numpy())
+                output = model.fusion_encoder(encoder_embeds=text_feats,
+                                              attention_mask=text_atts,
+                                              encoder_hidden_states=encoder_output,
+                                              encoder_attention_mask=encoder_att,
+                                              return_dict=True,
+                                              mode='fusion'
+                                              )
+                score = model.itm_head(output.last_hidden_state[:, 0, :])[:, 1]
+                score = score.mean()
+            logits.append(score.cpu().detach().numpy())
             logits = np.array(logits).squeeze() # (num_classes,)
-            logits = sigmoid(logits)
+            # logits = sigmoid(logits)
+
+            norm_logits = (logits - logits.mean()) / (logits.std())
+            logits = sigmoid(norm_logits)
 
             # # predict
             # image_features = model.encode_image(images)
@@ -355,9 +307,9 @@ def predict(loader, model, labels, positive, class_names, template, softmax_eval
                 print('logits size: ', logits.size())
          
     y_pred = np.array(y_pred)
-    return np.array(y_pred)
+    return np.array(y_pred), np.array(y_true)
 
-def run_single_prediction(cxr_labels, template, model, labels, positive, loader, softmax_eval=True, context_length=120):
+def run_single_prediction(model, loader):
     """
     FUNCTION: run_single_prediction
     --------------------------------------
@@ -374,9 +326,9 @@ def run_single_prediction(cxr_labels, template, model, labels, positive, loader,
         
     Returns list, predictions from the given template. 
     """
-    cxr_phrase = [template]
+    # cxr_phrase = [template]
     # zeroshot_weights = zeroshot_classifier(cxr_labels, cxr_phrase, model, context_length=context_length)
-    y_pred = predict(loader, model, labels, positive, cxr_labels, template, softmax_eval=softmax_eval)
+    y_pred = predict(loader, model)
     return y_pred
 
 def process_alt_labels(alt_labels_dict, cxr_labels): 
@@ -423,26 +375,23 @@ def process_alt_labels(alt_labels_dict, cxr_labels):
     
     return alt_label_list, alt_label_idx_map 
 
-def run_softmax_eval(model, labels, loader, eval_labels: list, pair_template: tuple, context_length: int = 120):
+def run_softmax_eval(model, loader, context_length: int = 120):
     """
     Run softmax evaluation to obtain a single prediction from the model.
     """
-     # get pos and neg phrases
-    pos = pair_template[0]
-    neg = pair_template[1]
+    #  # get pos and neg phrases
+    # pos = pair_template[0]
+    # neg = pair_template[1]
 
     # get pos and neg predictions, (num_samples, num_classes)
-    pos_pred = run_single_prediction(eval_labels, pos, model, labels, 1, loader,
-                                     softmax_eval=True, context_length=context_length) 
-    neg_pred = run_single_prediction(eval_labels, neg, model, labels, 0, loader,
-                                     softmax_eval=True, context_length=context_length)
+    y_pred, labels = run_single_prediction(model, loader)
 
-    # compute probabilities with softmax
-    sum_pred = np.exp(pos_pred) + np.exp(neg_pred)
-    y_pred = np.exp(pos_pred) / sum_pred
-    labels = labels[:,0]
+    # # compute probabilities with softmax
+    # sum_pred = np.exp(pos_pred) + np.exp(neg_pred)
+    # y_pred = np.exp(pos_pred) / sum_pred
+    # labels = labels[:,0]
 
-    return y_pred
+    return y_pred, labels
     
 def run_experiment(model, cxr_labels, cxr_templates, loader, y_true, alt_labels_dict=None, softmax_eval=True, context_length=120, use_bootstrap=True):
     '''
@@ -625,7 +574,7 @@ def make(
     )
     loader = torch.utils.data.DataLoader(torch_dset, shuffle=False)
     
-    return model.eval(), loader
+    return model, loader
 
 ## Run the model on the data set using ensembled models
 def ensemble_models(
@@ -668,16 +617,16 @@ def ensemble_models(
             y_pred = np.load(cache_path)
         else: # cached prediction not found, compute preds
             print("Inferring model {}".format(path))
-            y_pred = run_softmax_eval(model, loader, cxr_labels, cxr_pair_template)
-            if cache_dir is not None: 
-                Path(cache_dir).mkdir(exist_ok=True, parents=True)
-                np.save(file=cache_path, arr=y_pred)
+            y_pred, y_true = run_softmax_eval(model, loader, cxr_labels, cxr_pair_template)
+            # if cache_dir is not None:
+            #     Path(cache_dir).mkdir(exist_ok=True, parents=True)
+            #     np.save(file=cache_path, arr=y_pred)
         predictions.append(y_pred)
     
     # compute average predictions
     y_pred_avg = np.mean(predictions, axis=0)
     
-    return predictions, y_pred_avg
+    return predictions, y_pred_avg, y_true
 
 def run_zero_shot(cxr_labels, cxr_templates, model_path, cxr_filepath, final_label_path, alt_labels_dict: dict = None, softmax_eval = True, context_length=120, pretrained: bool = False, use_bootstrap=True, cutlabels=True):
     """

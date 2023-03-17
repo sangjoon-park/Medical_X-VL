@@ -10,7 +10,42 @@ import sys
 sys.path.append('../../')
 
 from eval_zero import evaluate, bootstrap
-from zero_shot import make, make_true_labels, run_softmax_eval
+from zero_error import make, make_true_labels, run_softmax_eval
+from sklearn.metrics import roc_auc_score
+from sklearn.utils import resample
+
+def compute_cis(data, confidence_level=0.05):
+    """
+    FUNCTION: compute_cis
+    ------------------------------------------------------
+    Given a Pandas dataframe of (n, labels), return another
+    Pandas dataframe that is (3, labels).
+
+    Each row is lower bound, mean, upper bound of a confidence
+    interval with `confidence`.
+
+    Args:
+        * data - Pandas Dataframe, of shape (num_bootstrap_samples, num_labels)
+        * confidence_level (optional) - confidence level of interval
+
+    Returns:
+        * Pandas Dataframe, of shape (3, labels), representing mean, lower, upper
+    """
+    data_columns = list(data)
+    intervals = []
+    for i in data_columns:
+        series = data[i]
+        sorted_perfs = series.sort_values()
+        lower_index = int(confidence_level / 2 * len(sorted_perfs)) - 1
+        upper_index = int((1 - confidence_level / 2) * len(sorted_perfs)) - 1
+        lower = sorted_perfs.iloc[lower_index].round(4)
+        upper = sorted_perfs.iloc[upper_index].round(4)
+        mean = round(sorted_perfs.mean(), 4)
+        interval = pd.DataFrame({i: [mean, lower, upper]})
+        intervals.append(interval)
+    intervals_df = pd.concat(intervals, axis=1)
+    intervals_df.index = ['mean', 'lower', 'upper']
+    return intervals_df
 
 
 # ----- DIRECTORIES ------ #
@@ -30,11 +65,11 @@ context_length: int = 120
 #                          'Lung Opacity', 'No Finding', 'Pleural Effusion', 'Pleural Other', 'Pneumonia',
 #                          'Pneumothorax', 'Support Devices']
 
-cxr_labels: List[str] = ['Atelectasis', 'Cardiomegaly', 'Edema', 'Fracture', 'Pleural Effusion', 'Pneumonia', 'Pneumothorax']
+# cxr_labels: List[str] = ['Atelectasis', 'Cardiomegaly', 'Edema', 'Fracture', 'Pleural Effusion', 'Pneumonia', 'Pneumothorax']
 
 # ---- TEMPLATES ----- #
 # Define set of templates | see Figure 1 for more details
-cxr_pair_template: Tuple[str] = ('{}', 'no {}')
+# cxr_pair_template: Tuple[str] = ('{}', 'no {}')
 
 # pos_query = ['Findings consistent with pneumonia', 'Findings suggesting pneumonia',
 #              'This opacity can represent pneumonia', 'Findings are most compatible with pneumonia']
@@ -59,10 +94,6 @@ print(model_paths)
 def ensemble_models(
         model_paths: List[str],
         cxr_filepath: str,
-        cxr_labels: List[str],
-        cxr_pair_template: Tuple[str],
-        cache_dir: str = None,
-        save_name: str = None,
 ) -> Tuple[List[np.ndarray], np.ndarray]:
     """
     Given a list of `model_paths`, ensemble model and return
@@ -83,12 +114,12 @@ def ensemble_models(
             cxr_filepath=cxr_filepath,
         )
 
-        # path to the cached prediction
-        if cache_dir is not None:
-            if save_name is not None:
-                cache_path = Path(cache_dir) / f"{save_name}_{model_name}.npy"
-            else:
-                cache_path = Path(cache_dir) / f"{model_name}.npy"
+        # # path to the cached prediction
+        # if cache_dir is not None:
+        #     if save_name is not None:
+        #         cache_path = Path(cache_dir) / f"{save_name}_{model_name}.npy"
+        #     else:
+        #         cache_path = Path(cache_dir) / f"{model_name}.npy"
 
         # # if prediction already cached, don't recompute prediction
         # if cache_dir is not None and os.path.exists(cache_path):
@@ -96,12 +127,12 @@ def ensemble_models(
         #     y_pred = np.load(cache_path)
         # else:  # cached prediction not found, compute preds
         print("Inferring model {}".format(path))
-        test_true = make_true_labels(cxr_true_labels_path=cxr_true_labels_path, cxr_labels=cxr_labels)
+        # test_true = make_true_labels(cxr_true_labels_path=cxr_true_labels_path, cxr_labels=cxr_labels)
 
-        y_pred = run_softmax_eval(model, test_true, loader, cxr_labels, cxr_pair_template)
-        if cache_dir is not None:
-            Path(cache_dir).mkdir(exist_ok=True, parents=True)
-            np.save(file=cache_path, arr=y_pred)
+        y_pred = run_softmax_eval(model, loader)
+        # if cache_dir is not None:
+        #     Path(cache_dir).mkdir(exist_ok=True, parents=True)
+        #     np.save(file=cache_path, arr=y_pred)
         predictions.append(y_pred)
 
     # compute average predictions
@@ -111,12 +142,9 @@ def ensemble_models(
 
 
 # %%
-predictions, y_pred_avg = ensemble_models(
+predictions, y_pred_avg, test_true = ensemble_models(
     model_paths=model_paths,
     cxr_filepath=cxr_filepath,
-    cxr_labels=cxr_labels,
-    cxr_pair_template=cxr_pair_template,
-    cache_dir=cache_dir,
 )
 # %%
 # save averaged preds
@@ -124,30 +152,64 @@ pred_name = "chexpert_preds.npy"  # add name of preds
 predictions_dir = predictions_dir / pred_name
 np.save(file=predictions_dir, arr=y_pred_avg)
 
-cxr_labels: List[str] = ['Atelectasis', 'Cardiomegaly', 'Edema', 'Fracture', 'Pleural Effusion', 'Pneumonia', 'Pneumothorax']
+# cxr_labels: List[str] = ['Atelectasis', 'Cardiomegaly', 'Edema', 'Fracture', 'Pleural Effusion', 'Pneumonia', 'Pneumothorax']
 
 # make test_true
 test_pred = y_pred_avg
-test_true = make_true_labels(cxr_true_labels_path=cxr_true_labels_path, cxr_labels=cxr_labels)
+# test_true = make_true_labels(cxr_true_labels_path=cxr_true_labels_path, cxr_labels=cxr_labels)
 
 # evaluate model
-cxr_results = evaluate(test_pred, test_true, cxr_labels)
+# cxr_results = roc_auc_score()
+
+def bootstrap(y_pred, y_true, cxr_labels, n_samples=1000, label_idx_map=None):
+    '''
+    This function will randomly sample with replacement
+    from y_pred and y_true then evaluate `n` times
+    and obtain AUROC scores for each.
+
+    You can specify the number of samples that should be
+    used with the `n_samples` parameter.
+
+    Confidence intervals will be generated from each
+    of the samples.
+
+    Note:
+    * n_total_labels >= n_cxr_labels
+        `n_total_labels` is greater iff alternative labels are being tested
+    '''
+    np.random.seed(97)
+    y_pred  # (500, n_total_labels)
+    y_true  # (500, n_cxr_labels)
+
+    idx = np.arange(len(y_true))
+
+    boot_stats = []
+    for i in range(n_samples):
+        sample = resample(idx, replace=True, random_state=i)
+        y_pred_sample = y_pred[sample]
+        y_true_sample = y_true[sample]
+
+        sample_stats = evaluate(y_pred_sample, y_true_sample, cxr_labels, label_idx_map=label_idx_map)
+        boot_stats.append(sample_stats)
+
+    boot_stats = pd.concat(boot_stats)  # pandas array of evaluations for each sample
+    return boot_stats, compute_cis(boot_stats)
 
 # boostrap evaluations for 95% confidence intervals
-bootstrap_results = bootstrap(test_pred, test_true, cxr_labels)
+bootstrap_results = bootstrap(test_pred, test_true)
 # %%
 # display AUC with confidence intervals
 
-Atelectasis_auc = bootstrap_results[1]['Atelectasis_auc']['mean']
-Cardiomegaly_auc = bootstrap_results[1]['Cardiomegaly_auc']['mean']
-# Consolidation_auc = bootstrap_results[1]['Consolidation_auc']['mean']
-Edema_auc = bootstrap_results[1]['Edema_auc']['mean']
-Effusion_auc = bootstrap_results[1]['Pleural Effusion_auc']['mean']
-Fracture_auc = bootstrap_results[1]['Fracture_auc']['mean']
-Pneumonia_auc = bootstrap_results[1]['Pneumonia_auc']['mean']
-Pneumothorax_auc = bootstrap_results[1]['Pneumothorax_auc']['mean']
-Mean_auc = (Atelectasis_auc + Cardiomegaly_auc + Edema_auc + Effusion_auc + Fracture_auc + Pneumonia_auc + Pneumothorax_auc) / 7.
-print('Model name: {} / Mean AUC: {}'.format(model_dir, Mean_auc))
+# Atelectasis_auc = bootstrap_results[1]['Atelectasis_auc']['mean']
+# Cardiomegaly_auc = bootstrap_results[1]['Cardiomegaly_auc']['mean']
+# # Consolidation_auc = bootstrap_results[1]['Consolidation_auc']['mean']
+# Edema_auc = bootstrap_results[1]['Edema_auc']['mean']
+# Effusion_auc = bootstrap_results[1]['Pleural Effusion_auc']['mean']
+# Fracture_auc = bootstrap_results[1]['Fracture_auc']['mean']
+# Pneumonia_auc = bootstrap_results[1]['Pneumonia_auc']['mean']
+# Pneumothorax_auc = bootstrap_results[1]['Pneumothorax_auc']['mean']
+# Mean_auc = (Atelectasis_auc + Cardiomegaly_auc + Edema_auc + Effusion_auc + Fracture_auc + Pneumonia_auc + Pneumothorax_auc) / 7.
+# print('Model name: {} / Mean AUC: {}'.format(model_dir, Mean_auc))
 
 bootstrap_results[1]
 # %%
