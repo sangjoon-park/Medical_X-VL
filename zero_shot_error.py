@@ -49,7 +49,7 @@ def compute_cis(data, confidence_level=0.05):
 
 
 # ----- DIRECTORIES ------ #
-report_filepath: str = './data/openi_impressions.csv'
+report_filepath: str = './data/openi/Test_selected.jsonl'
 
 cxr_true_labels_path: Optional[
     str] = '/home/depecher/PycharmProjects/CheXzero/data/groundtruth.csv'  # (optional for evaluation) if labels are provided, provide path
@@ -130,7 +130,7 @@ def ensemble_models(
         print("Inferring model {}".format(path))
         # test_true = make_true_labels(cxr_true_labels_path=cxr_true_labels_path, cxr_labels=cxr_labels)
 
-        y_pred = run_softmax_eval(model, loader)
+        y_pred, y_true = run_softmax_eval(model, loader)
         # if cache_dir is not None:
         #     Path(cache_dir).mkdir(exist_ok=True, parents=True)
         #     np.save(file=cache_path, arr=y_pred)
@@ -139,7 +139,7 @@ def ensemble_models(
     # compute average predictions
     y_pred_avg = np.mean(predictions, axis=0)
 
-    return predictions, y_pred_avg
+    return predictions, y_pred_avg, y_true
 
 
 # %%
@@ -162,7 +162,10 @@ test_pred = y_pred_avg
 # evaluate model
 # cxr_results = roc_auc_score()
 
-def bootstrap(y_pred, y_true, cxr_labels, n_samples=1000, label_idx_map=None):
+auc = roc_auc_score(test_true, test_pred)
+print(auc)
+
+def bootstrap(y_pred, y_true, n_samples=1000, label_idx_map=None):
     '''
     This function will randomly sample with replacement
     from y_pred and y_true then evaluate `n` times
@@ -190,7 +193,7 @@ def bootstrap(y_pred, y_true, cxr_labels, n_samples=1000, label_idx_map=None):
         y_pred_sample = y_pred[sample]
         y_true_sample = y_true[sample]
 
-        sample_stats = evaluate(y_pred_sample, y_true_sample, cxr_labels, label_idx_map=label_idx_map)
+        sample_stats = evaluate(y_pred_sample, y_true_sample)
         boot_stats.append(sample_stats)
 
     boot_stats = pd.concat(boot_stats)  # pandas array of evaluations for each sample

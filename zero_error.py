@@ -14,7 +14,7 @@ from tqdm.notebook import tqdm
 from pathlib import Path
 from dataset.utils import pre_caption
 from health_multimodal.image.data.transforms import create_chest_xray_transform_for_inference, create_chest_xray_transform_for_train
-from error_generator import ErrorGenerator
+from error_generator_openi import ErrorGenerator
 import json
 
 import torch.nn as nn
@@ -60,24 +60,19 @@ class CXRTestDataset(data.Dataset):
         max_words = 120
     ):
         super().__init__()
-        self.df = pd.read_csv(report_path)
         self.max_words = max_words
         self.transforms = transform
 
-        corpus_dir = '/COVID_8TB/sangjoon/mimic_CXR/mimic_impressions_final.csv'
-        label_dir = '/COVID_8TB/sangjoon/mimic-cxr/mimic-cxr-2.0.0-chexpert.csv'
-        pair_dir = './entire_pair_final.json'
+        corpus_dir = './data/openi/Test_selected.jsonl'
 
-        with open(pair_dir, 'r') as f:
-            entire_pair = json.load(f, encoding='cp949')
+        entire_corpus = pd.read_json(corpus_dir, lines=True)
+        self.df = entire_corpus
+        self.ids = list(self.df.id)
 
-        entire_texts = pd.read_csv(corpus_dir)
-        entire_labels = pd.read_csv(label_dir)
-
-        self.error_generator = ErrorGenerator(entire_texts, entire_labels, entire_pair)
+        self.error_generator = ErrorGenerator(entire_corpus=entire_corpus, probability=0.05)
             
     def __len__(self):
-        return len(self.df)
+        return len(self.ids)
 
     def _resize_img(self, img, scale):
         """
@@ -128,24 +123,27 @@ class CXRTestDataset(data.Dataset):
         return resized_img
     
     def __getitem__(self, index):
-        line = self.df[index]
-        path = line['filename']
-        impression = line['impression']
+        id = self.ids[index]
+        img_path = self.df[self.df.id == id].img.values[0]
+        img_path = img_path.replace('/home/data_storage/mimic-cxr/dataset/', '/COVID_8TB/sangjoon/vision_language/')
 
-        img = cv2.imread(str(path))
+        impression = self.df[self.df.id == id].text.values[0]
+
+        img = cv2.imread(str(img_path))
         # convert to PIL Image object
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img_pil = Image.fromarray(img)
         # preprocess
         image = preprocess(img_pil, desired_size=320)
-        image = self._resize_img(image, 512)
-        image = Image.fromarray(image)
+        # image = self._resize_img(np.array(image), 512)
+        # image = Image.fromarray(image)
 
-        output = self.transforms(image) / 255.
+        output = self.transforms(image)
 
         impression = pre_caption(impression, self.max_words)
 
-        error_imp = self.error_generator(impression, L=True)
+        error_imp = self.error_generator(impression, id, O=False, C=False, FP=False, FN=False, L=False, E=False, M=True)
+        error_imp = pre_caption(error_imp)
 
         if impression != error_imp:
             label = 1
@@ -247,7 +245,7 @@ def predict(loader, model, verbose=0):
             texts = data[1]
             label = data[2]
 
-            y_true.append(label)
+            y_true.append(label.numpy())
 
             image = image.cuda()
 
@@ -289,8 +287,8 @@ def predict(loader, model, verbose=0):
             logits = np.array(logits).squeeze() # (num_classes,)
             # logits = sigmoid(logits)
 
-            norm_logits = (logits - logits.mean()) / (logits.std())
-            logits = sigmoid(norm_logits)
+            # norm_logits = (logits - logits.mean()) / (logits.std())
+            logits = 1. - sigmoid(logits)
 
             # # predict
             # image_features = model.encode_image(images)
@@ -338,8 +336,8 @@ def run_single_prediction(model, loader):
     """
     # cxr_phrase = [template]
     # zeroshot_weights = zeroshot_classifier(cxr_labels, cxr_phrase, model, context_length=context_length)
-    y_pred = predict(loader, model)
-    return y_pred
+    y_pred, y_true = predict(loader, model)
+    return y_pred, y_true
 
 def process_alt_labels(alt_labels_dict, cxr_labels): 
     """
@@ -440,7 +438,7 @@ def run_experiment(model, cxr_labels, cxr_templates, loader, y_true, alt_labels_
             #
             # else:
             # get single prediction
-            y_pred = run_single_prediction(eval_labels, template, model, y_true, loader,
+            y_pred, y_true = run_single_prediction(eval_labels, template, model, y_true, loader,
                                            softmax_eval=softmax_eval, context_length=context_length)
 #             print("y_pred: ", y_pred)
         except: 

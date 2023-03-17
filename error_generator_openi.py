@@ -300,7 +300,7 @@ class ErrorGenerator(object):
         else:
             return impression
 
-    def __call__(self, impression, id, O=False, C=False, FP=False, FN=True, L=False, E=False, M=False):
+    def __call__(self, impression, id, O=False, C=False, FP=False, FN=False, L=False, E=False, M=False):
         """
         Realistic error generation
         input: report (text)
