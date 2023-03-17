@@ -30,7 +30,7 @@ context_length: int = 120
 #                          'Lung Opacity', 'No Finding', 'Pleural Effusion', 'Pleural Other', 'Pneumonia',
 #                          'Pneumothorax', 'Support Devices']
 
-cxr_labels: List[str] = ['Atelectasis', 'Cardiomegaly', 'Edema', 'Fracture', 'Pleural Effusion', 'Pneumonia', 'Pneumothorax']
+cxr_labels: List[str] = ['Atelectasis', 'Cardiomegaly', 'Edema', 'Consolidation', 'Fracture', 'Pleural Effusion', 'Pneumonia', 'Pneumothorax']
 
 # ---- TEMPLATES ----- #
 # Define set of templates | see Figure 1 for more details
@@ -124,7 +124,7 @@ pred_name = "chexpert_preds.npy"  # add name of preds
 predictions_dir = predictions_dir / pred_name
 np.save(file=predictions_dir, arr=y_pred_avg)
 
-cxr_labels: List[str] = ['Atelectasis', 'Cardiomegaly', 'Edema', 'Fracture', 'Pleural Effusion', 'Pneumonia', 'Pneumothorax']
+cxr_labels: List[str] = ['Atelectasis', 'Cardiomegaly', 'Edema', 'Consolidation', 'Fracture', 'Pleural Effusion', 'Pneumonia', 'Pneumothorax']
 
 # make test_true
 test_pred = y_pred_avg
@@ -134,12 +134,13 @@ test_true = make_true_labels(cxr_true_labels_path=cxr_true_labels_path, cxr_labe
 cxr_results = evaluate(test_pred, test_true, cxr_labels)
 Atelectasis_auc = cxr_results['Atelectasis_auc']
 Cardiomegaly_auc = cxr_results['Cardiomegaly_auc']
+Consolidation_auc = cxr_results['Consolidation_auc']
 Edema_auc = cxr_results['Edema_auc']
 Effusion_auc = cxr_results['Pleural Effusion_auc']
 Fracture_auc = cxr_results['Fracture_auc']
 Pneumonia_auc = cxr_results['Pneumonia_auc']
 Pneumothorax_auc = cxr_results['Pneumothorax_auc']
-Mean_auc = (Atelectasis_auc + Cardiomegaly_auc + Edema_auc + Effusion_auc + Fracture_auc + Pneumonia_auc + Pneumothorax_auc) / 7.
+Mean_auc = (Atelectasis_auc + Cardiomegaly_auc + Consolidation_auc + Edema_auc + Effusion_auc + Fracture_auc + Pneumonia_auc + Pneumothorax_auc) / 8.
 
 # boostrap evaluations for 95% confidence intervals
 bootstrap_results = bootstrap(test_pred, test_true, cxr_labels)
@@ -148,13 +149,13 @@ bootstrap_results = bootstrap(test_pred, test_true, cxr_labels)
 
 Atelectasis_auc = bootstrap_results[1]['Atelectasis_auc']['mean']
 Cardiomegaly_auc = bootstrap_results[1]['Cardiomegaly_auc']['mean']
-# Consolidation_auc = bootstrap_results[1]['Consolidation_auc']['mean']
+Consolidation_auc = bootstrap_results[1]['Consolidation_auc']['mean']
 Edema_auc = bootstrap_results[1]['Edema_auc']['mean']
 Effusion_auc = bootstrap_results[1]['Pleural Effusion_auc']['mean']
 Fracture_auc = bootstrap_results[1]['Fracture_auc']['mean']
 Pneumonia_auc = bootstrap_results[1]['Pneumonia_auc']['mean']
 Pneumothorax_auc = bootstrap_results[1]['Pneumothorax_auc']['mean']
-Mean_auc = (Atelectasis_auc + Cardiomegaly_auc + Edema_auc + Effusion_auc + Fracture_auc + Pneumonia_auc + Pneumothorax_auc) / 7.
+Mean_auc = (Atelectasis_auc + Cardiomegaly_auc + Edema_auc + Consolidation_auc + Effusion_auc + Fracture_auc + Pneumonia_auc + Pneumothorax_auc) / 8.
 print('Model name: {} / Mean AUC: {}'.format(model_dir, Mean_auc))
 
 bootstrap_results[1]

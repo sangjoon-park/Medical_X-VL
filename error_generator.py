@@ -30,133 +30,133 @@ class ErrorGenerator(object):
         else:
             self.entire_pair = {}
 
-        # for study_id in tqdm(list(entire_labels.study_id)):
-        #     labels = entire_labels.loc[entire_labels.study_id == study_id]
-        #     study_id_ = 's' + str(study_id) + '.txt'
-        #     impression = entire_corpus.loc[entire_corpus.filename == study_id_].impression.values[0]
-        #     try:
-        #         impression = pre_caption(impression)
-        #     except:
-        #         impression = impression
+        for study_id in tqdm(list(entire_labels.study_id)):
+            labels = entire_labels.loc[entire_labels.study_id == study_id]
+            study_id_ = 's' + str(study_id) + '.txt'
+            impression = entire_corpus.loc[entire_corpus.filename == study_id_].impression.values[0]
+            try:
+                impression = pre_caption(impression)
+            except:
+                impression = impression
 
-        #     all_labels = []
-        #
-        #     if not np.isnan(labels['Atelectasis'].values)[0]:
-        #         if labels['Atelectasis'].values[0] == 1:
-        #             all_labels.append('positive_Atelectasis')
-        #         elif labels['Atelectasis'].values[0] == -1:
-        #             all_labels.append('probable_Atelectasis')
-        #         elif labels['Atelectasis'].values[0] == -0:
-        #             all_labels.append('negative_Atelectasis')
-        #
-        #     if not np.isnan(labels['Cardiomegaly'].values)[0]:
-        #         if labels['Cardiomegaly'].values[0] == 1:
-        #             all_labels.append('positive_Cardiomegaly')
-        #         elif labels['Cardiomegaly'].values[0] == -1:
-        #             all_labels.append('probable_Cardiomegaly')
-        #         elif labels['Cardiomegaly'].values[0] == -0:
-        #             all_labels.append('negative_Cardiomegaly')
-        #
-        #     if not np.isnan(labels['Consolidation'].values)[0]:
-        #         if labels['Consolidation'].values[0] == 1:
-        #             all_labels.append('positive_Consolidation')
-        #         elif labels['Consolidation'].values[0] == -1:
-        #             all_labels.append('probable_Consolidation')
-        #         elif labels['Consolidation'].values[0] == -0:
-        #             all_labels.append('negative_Consolidation')
-        #
-        #     if not np.isnan(labels['Edema'].values)[0]:
-        #         if labels['Edema'].values[0] == 1:
-        #             all_labels.append('positive_Edema')
-        #         elif labels['Edema'].values[0] == -1:
-        #             all_labels.append('probable_Edema')
-        #         elif labels['Edema'].values[0] == -0:
-        #             all_labels.append('negative_Edema')
-        #
-        #     if not np.isnan(labels['Enlarged Cardiomediastinum'].values)[0]:
-        #         if labels['Enlarged Cardiomediastinum'].values[0] == 1:
-        #             all_labels.append('positive_Enlarged Cardiomediastinum')
-        #         elif labels['Enlarged Cardiomediastinum'].values[0] == -1:
-        #             all_labels.append('probable_Enlarged Cardiomediastinum')
-        #         elif labels['Enlarged Cardiomediastinum'].values[0] == -0:
-        #             all_labels.append('negative_Enlarged Cardiomediastinum')
-        #
-        #     if not np.isnan(labels['Fracture'].values)[0]:
-        #         if labels['Fracture'].values[0] == 1:
-        #             all_labels.append('positive_Fracture')
-        #         elif labels['Fracture'].values[0] == -1:
-        #             all_labels.append('probable_Fracture')
-        #         elif labels['Fracture'].values[0] == -0:
-        #             all_labels.append('negative_Fracture')
-        #
-        #     if not np.isnan(labels['Lung Lesion'].values)[0]:
-        #         if labels['Lung Lesion'].values[0] == 1:
-        #             all_labels.append('positive_Lung Lesion')
-        #         elif labels['Lung Lesion'].values[0] == -1:
-        #             all_labels.append('probable_Lung Lesion')
-        #         elif labels['Lung Lesion'].values[0] == -0:
-        #             all_labels.append('negative_Lung Lesion')
-        #
-        #     if not np.isnan(labels['Lung Opacity'].values)[0]:
-        #         if labels['Lung Opacity'].values[0] == 1:
-        #             all_labels.append('positive_Lung Opacity')
-        #         elif labels['Lung Opacity'].values[0] == -1:
-        #             all_labels.append('probable_Lung Opacity')
-        #         elif labels['Lung Opacity'].values[0] == -0:
-        #             all_labels.append('negative_Lung Opacity')
-        #
-        #     if not np.isnan(labels['No Finding'].values)[0]:
-        #         if labels['No Finding'].values[0] == 1:
-        #             all_labels.append('positive_No Finding')
-        #         elif labels['No Finding'].values[0] == -1:
-        #             all_labels.append('probable_No Finding')
-        #         elif labels['No Finding'].values[0] == -0:
-        #             all_labels.append('negative_No Finding')
-        #
-        #     if not np.isnan(labels['Pleural Effusion'].values)[0]:
-        #         if labels['Pleural Effusion'].values[0] == 1:
-        #             all_labels.append('positive_Pleural Effusion')
-        #         elif labels['Pleural Effusion'].values[0] == -1:
-        #             all_labels.append('probable_Pleural Effusion')
-        #         elif labels['Pleural Effusion'].values[0] == -0:
-        #             all_labels.append('negative_Pleural Effusion')
-        #
-        #     if not np.isnan(labels['Pleural Other'].values)[0]:
-        #         if labels['Pleural Other'].values[0] == 1:
-        #             all_labels.append('positive_Pleural Other')
-        #         elif labels['Pleural Other'].values[0] == -1:
-        #             all_labels.append('probable_Pleural Other')
-        #         elif labels['Pleural Other'].values[0] == -0:
-        #             all_labels.append('negative_Pleural Other')
-        #
-        #     if not np.isnan(labels['Pneumonia'].values)[0]:
-        #         if labels['Pneumonia'].values[0] == 1:
-        #             all_labels.append('positive_Pneumonia')
-        #         elif labels['Pneumonia'].values[0] == -1:
-        #             all_labels.append('probable_Pneumonia')
-        #         elif labels['Pneumonia'].values[0] == -0:
-        #             all_labels.append('negative_Pneumonia')
-        #
-        #     if not np.isnan(labels['Pneumothorax'].values)[0]:
-        #         if labels['Pneumothorax'].values[0] == 1:
-        #             all_labels.append('positive_Pneumothorax')
-        #         elif labels['Pneumothorax'].values[0] == -1:
-        #             all_labels.append('probable_Pneumothorax')
-        #         elif labels['Pneumothorax'].values[0] == -0:
-        #             all_labels.append('negative_Pneumothorax')
-        #
-        #     if not np.isnan(labels['Support Devices'].values)[0]:
-        #         if labels['Support Devices'].values[0] == 1:
-        #             all_labels.append('positive_Support Devices')
-        #         elif labels['Support Devices'].values[0] == -1:
-        #             all_labels.append('probable_Support Devices')
-        #         elif labels['Support Devices'].values[0] == -0:
-        #             all_labels.append('negative_Support Devices')
-        #
-        #     self.entire_pair[impression] = all_labels
-        #
-        # with open('./entire_pair_final.json', 'w') as f:
-        #     json.dump(self.entire_pair, f)
+            all_labels = []
+
+            if not np.isnan(labels['Atelectasis'].values)[0]:
+                if labels['Atelectasis'].values[0] == 1:
+                    all_labels.append('positive_Atelectasis')
+                elif labels['Atelectasis'].values[0] == -1:
+                    all_labels.append('probable_Atelectasis')
+                elif labels['Atelectasis'].values[0] == -0:
+                    all_labels.append('negative_Atelectasis')
+
+            if not np.isnan(labels['Cardiomegaly'].values)[0]:
+                if labels['Cardiomegaly'].values[0] == 1:
+                    all_labels.append('positive_Cardiomegaly')
+                elif labels['Cardiomegaly'].values[0] == -1:
+                    all_labels.append('probable_Cardiomegaly')
+                elif labels['Cardiomegaly'].values[0] == -0:
+                    all_labels.append('negative_Cardiomegaly')
+
+            if not np.isnan(labels['Consolidation'].values)[0]:
+                if labels['Consolidation'].values[0] == 1:
+                    all_labels.append('positive_Consolidation')
+                elif labels['Consolidation'].values[0] == -1:
+                    all_labels.append('probable_Consolidation')
+                elif labels['Consolidation'].values[0] == -0:
+                    all_labels.append('negative_Consolidation')
+
+            if not np.isnan(labels['Edema'].values)[0]:
+                if labels['Edema'].values[0] == 1:
+                    all_labels.append('positive_Edema')
+                elif labels['Edema'].values[0] == -1:
+                    all_labels.append('probable_Edema')
+                elif labels['Edema'].values[0] == -0:
+                    all_labels.append('negative_Edema')
+
+            if not np.isnan(labels['Enlarged Cardiomediastinum'].values)[0]:
+                if labels['Enlarged Cardiomediastinum'].values[0] == 1:
+                    all_labels.append('positive_Enlarged Cardiomediastinum')
+                elif labels['Enlarged Cardiomediastinum'].values[0] == -1:
+                    all_labels.append('probable_Enlarged Cardiomediastinum')
+                elif labels['Enlarged Cardiomediastinum'].values[0] == -0:
+                    all_labels.append('negative_Enlarged Cardiomediastinum')
+
+            if not np.isnan(labels['Fracture'].values)[0]:
+                if labels['Fracture'].values[0] == 1:
+                    all_labels.append('positive_Fracture')
+                elif labels['Fracture'].values[0] == -1:
+                    all_labels.append('probable_Fracture')
+                elif labels['Fracture'].values[0] == -0:
+                    all_labels.append('negative_Fracture')
+
+            if not np.isnan(labels['Lung Lesion'].values)[0]:
+                if labels['Lung Lesion'].values[0] == 1:
+                    all_labels.append('positive_Lung Lesion')
+                elif labels['Lung Lesion'].values[0] == -1:
+                    all_labels.append('probable_Lung Lesion')
+                elif labels['Lung Lesion'].values[0] == -0:
+                    all_labels.append('negative_Lung Lesion')
+
+            if not np.isnan(labels['Lung Opacity'].values)[0]:
+                if labels['Lung Opacity'].values[0] == 1:
+                    all_labels.append('positive_Lung Opacity')
+                elif labels['Lung Opacity'].values[0] == -1:
+                    all_labels.append('probable_Lung Opacity')
+                elif labels['Lung Opacity'].values[0] == -0:
+                    all_labels.append('negative_Lung Opacity')
+
+            if not np.isnan(labels['No Finding'].values)[0]:
+                if labels['No Finding'].values[0] == 1:
+                    all_labels.append('positive_No Finding')
+                elif labels['No Finding'].values[0] == -1:
+                    all_labels.append('probable_No Finding')
+                elif labels['No Finding'].values[0] == -0:
+                    all_labels.append('negative_No Finding')
+
+            if not np.isnan(labels['Pleural Effusion'].values)[0]:
+                if labels['Pleural Effusion'].values[0] == 1:
+                    all_labels.append('positive_Pleural Effusion')
+                elif labels['Pleural Effusion'].values[0] == -1:
+                    all_labels.append('probable_Pleural Effusion')
+                elif labels['Pleural Effusion'].values[0] == -0:
+                    all_labels.append('negative_Pleural Effusion')
+
+            if not np.isnan(labels['Pleural Other'].values)[0]:
+                if labels['Pleural Other'].values[0] == 1:
+                    all_labels.append('positive_Pleural Other')
+                elif labels['Pleural Other'].values[0] == -1:
+                    all_labels.append('probable_Pleural Other')
+                elif labels['Pleural Other'].values[0] == -0:
+                    all_labels.append('negative_Pleural Other')
+
+            if not np.isnan(labels['Pneumonia'].values)[0]:
+                if labels['Pneumonia'].values[0] == 1:
+                    all_labels.append('positive_Pneumonia')
+                elif labels['Pneumonia'].values[0] == -1:
+                    all_labels.append('probable_Pneumonia')
+                elif labels['Pneumonia'].values[0] == -0:
+                    all_labels.append('negative_Pneumonia')
+
+            if not np.isnan(labels['Pneumothorax'].values)[0]:
+                if labels['Pneumothorax'].values[0] == 1:
+                    all_labels.append('positive_Pneumothorax')
+                elif labels['Pneumothorax'].values[0] == -1:
+                    all_labels.append('probable_Pneumothorax')
+                elif labels['Pneumothorax'].values[0] == -0:
+                    all_labels.append('negative_Pneumothorax')
+
+            if not np.isnan(labels['Support Devices'].values)[0]:
+                if labels['Support Devices'].values[0] == 1:
+                    all_labels.append('positive_Support Devices')
+                elif labels['Support Devices'].values[0] == -1:
+                    all_labels.append('probable_Support Devices')
+                elif labels['Support Devices'].values[0] == -0:
+                    all_labels.append('negative_Support Devices')
+
+            self.entire_pair[impression] = all_labels
+
+        with open('./entire_pair_final.json', 'w') as f:
+            json.dump(self.entire_pair, f)
 
     def location(self, report):
         keywords = ['left', 'right', 'left-sided', 'right-sided', 'upper', 'lower', 'apical', 'basal', 'central', 'peripheral']

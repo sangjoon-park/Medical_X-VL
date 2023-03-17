@@ -33,6 +33,18 @@ import torch.nn.functional as F
 CXR_FILEPATH = '../../project-files/data/test_cxr.h5'
 FINAL_LABEL_PATH = '../../project-files/data/final_paths.csv'
 
+def preprocess(img, desired_size=320):
+    old_size = img.size
+    ratio = float(desired_size)/max(old_size)
+    new_size = tuple([int(x*ratio) for x in old_size])
+    img = img.resize(new_size, Image.ANTIALIAS)
+    # create a new image and paste the resized on it
+
+    new_img = Image.new('L', (desired_size, desired_size))
+    new_img.paste(img, ((desired_size-new_size[0])//2,
+                        (desired_size-new_size[1])//2))
+    return new_img
+
 class CXRTestDataset(data.Dataset):
     """Represents an abstract HDF5 dataset.
     
@@ -42,14 +54,12 @@ class CXRTestDataset(data.Dataset):
         transform: PyTorch transform to apply to every data instance (default=None).
     """
     def __init__(
-        self, 
-        img_path: str,
+        self,
         report_path: str,
         transform = None,
         max_words = 120
     ):
         super().__init__()
-        self.img_dset = h5py.File(img_path, 'r')['cxr']
         self.df = pd.read_csv(report_path)
         self.max_words = max_words
         self.transforms = transform
@@ -67,7 +77,7 @@ class CXRTestDataset(data.Dataset):
         self.error_generator = ErrorGenerator(entire_texts, entire_labels, entire_pair)
             
     def __len__(self):
-        return len(self.img_dset)
+        return len(self.df)
 
     def _resize_img(self, img, scale):
         """
@@ -118,21 +128,21 @@ class CXRTestDataset(data.Dataset):
         return resized_img
     
     def __getitem__(self, index):
-        image = self.img_dset[index]
+        line = self.df[index]
+        path = line['filename']
+        impression = line['impression']
 
+        img = cv2.imread(str(path))
+        # convert to PIL Image object
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img_pil = Image.fromarray(img)
+        # preprocess
+        image = preprocess(img_pil, desired_size=320)
         image = self._resize_img(image, 512)
         image = Image.fromarray(image)
 
         output = self.transforms(image) / 255.
 
-        # sample = {'img', output}
-
-        # if target == 0:
-        #     report = 'No evidence of pneumonia.'
-        # elif target == 1:
-        #     report = 'Findings suggesting pneumonia.'
-
-        impression = self.df.iloc[index].impression
         impression = pre_caption(impression, self.max_words)
 
         error_imp = self.error_generator(impression, L=True)
@@ -487,8 +497,8 @@ from torchvision import transforms
 from PIL import Image
 
 def make(
-    model_path: str, 
-    cxr_filepath: str, 
+    model_path: str,
+    report_filepath: str,
     pretrained: bool = True, 
     context_length: bool = 120,
 ):
@@ -569,12 +579,12 @@ def make(
     
     # create dataset
     torch_dset = CXRTestDataset(
-        img_path=cxr_filepath,
+        report_path=report_filepath,
         transform=test_transform,
     )
     loader = torch.utils.data.DataLoader(torch_dset, shuffle=False)
     
-    return model, loader
+    return model.eval(), loader
 
 ## Run the model on the data set using ensembled models
 def ensemble_models(

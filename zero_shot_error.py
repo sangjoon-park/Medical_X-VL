@@ -49,7 +49,8 @@ def compute_cis(data, confidence_level=0.05):
 
 
 # ----- DIRECTORIES ------ #
-cxr_filepath: str = '/home/depecher/PycharmProjects/CheXzero/data/chexpert_test.h5'  # filepath of chest x-ray images (.h5)
+report_filepath: str = './data/openi_impressions.csv'
+
 cxr_true_labels_path: Optional[
     str] = '/home/depecher/PycharmProjects/CheXzero/data/groundtruth.csv'  # (optional for evaluation) if labels are provided, provide path
 model_dir: str = '/COVID_8TB/sangjoon/chexzero_checkpoint/20230316_teacher/best/'  # where pretrained models are saved (.pt)
@@ -93,7 +94,7 @@ print(model_paths)
 ## Run the model on the data set using ensembled models
 def ensemble_models(
         model_paths: List[str],
-        cxr_filepath: str,
+        report_filepath: str,
 ) -> Tuple[List[np.ndarray], np.ndarray]:
     """
     Given a list of `model_paths`, ensemble model and return
@@ -111,7 +112,7 @@ def ensemble_models(
         # load in model and `torch.DataLoader`
         model, loader = make(
             model_path=path,
-            cxr_filepath=cxr_filepath,
+            report_filepath=report_filepath
         )
 
         # # path to the cached prediction
@@ -144,7 +145,7 @@ def ensemble_models(
 # %%
 predictions, y_pred_avg, test_true = ensemble_models(
     model_paths=model_paths,
-    cxr_filepath=cxr_filepath,
+    report_filepath=report_filepath,
 )
 # %%
 # save averaged preds
