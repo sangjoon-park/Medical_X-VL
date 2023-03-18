@@ -10,7 +10,7 @@ from dataset.randaugment import RandomAugment
 from dataset.utils import GaussianBlur
 
 from ibot_utils import DataAugmentationiBOT, NoAugmentationiBOT, FineAugmentationiBOT
-from dataset.ibot_dataset import ImageFolderMask, Retrieval_dataset, Gen_dataset, Cls_dataset, Vqa_dataset
+from dataset.ibot_dataset import ImageFolderMask, Retrieval_dataset, Gen_dataset, Cls_dataset, Vqa_dataset, CXRTrainDataset, CXRTestDataset
 from health_multimodal.image.data.transforms import create_chest_xray_transform_for_inference, create_chest_xray_transform_for_train
 
 
@@ -72,6 +72,11 @@ def create_dataset(dataset, config):
         vqa_test_dataset = Vqa_dataset(config['test_file'], test_transform, config['vqa_root'], config['vg_root'],
                                        split='test', answer_list=config['answer_list'], chest_only=config['chest_only'])
         return train_dataset, vqa_test_dataset
+
+    elif dataset == 'error_correction':
+        train_set = CXRTrainDataset(config['train_file'], transform=train_transform)
+        test_set = CXRTestDataset(transform=test_transform)
+        return train_set, test_set
 
 
 def gen_collate_fn(batch):
@@ -148,6 +153,32 @@ def create_VQA_loader(datasets, samplers, batch_size, num_workers, is_trains, co
             shuffle = (sampler is None)
             drop_last = True
         else:
+            shuffle = False
+            drop_last = False
+        loader = DataLoader(
+            dataset,
+            batch_size=bs,
+            num_workers=n_worker,
+            pin_memory=True,
+            sampler=sampler,
+            shuffle=shuffle,
+            collate_fn=collate_fn,
+            drop_last=drop_last,
+        )
+        loaders.append(loader)
+    return loaders
+
+
+
+def create_error_loader(datasets, samplers, batch_size, num_workers, is_trains, collate_fns):
+    loaders = []
+    for dataset, sampler, bs, n_worker, is_train, collate_fn in zip(datasets, samplers, batch_size, num_workers,
+                                                                    is_trains, collate_fns):
+        if is_train:
+            shuffle = (sampler is None)
+            drop_last = True
+        else:
+            sampler = None
             shuffle = False
             drop_last = False
         loader = DataLoader(

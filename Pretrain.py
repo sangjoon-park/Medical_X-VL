@@ -107,13 +107,13 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
         if epoch == 0 and i % step_size == 0 and i <= warmup_iterations:
             scheduler.step(i // step_size)
 
-        if it % 5000 == 0 and it > 20000:
-            model_without_ddp = model.module
-            save_obj = {
-                'model': model_without_ddp.state_dict(),
-                'config': config,
-            }
-            torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_it_{}.pth'.format(it)))
+        # if it % 5000 == 0 and it > 20000:
+        #     model_without_ddp = model.module
+        #     save_obj = {
+        #         'model': model_without_ddp.state_dict(),
+        #         'config': config,
+        #     }
+        #     torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_it_{}.pth'.format(it)))
 
             # gather the stats from all processes
     metric_logger.synchronize_between_processes()

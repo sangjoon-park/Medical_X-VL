@@ -2,6 +2,11 @@ from functools import partial
 from models.ibot_vit import VisionTransformer, interpolate_pos_embed, vit_base, vit_small
 from models.xbert import BertConfig, BertModel, BertLMHeadModel
 from models.vit import VisionTransformer as VisionTransformer_deit
+from health_multimodal.text.utils import get_cxr_bert
+# from health_multimodal.image.model.model import get_biovil_resnet
+from health_multimodal.image.data.transforms import create_chest_xray_transform_for_inference, create_chest_xray_transform_for_train
+from health_multimodal.text.inference_engine import TextInferenceEngine
+import clip
 
 import torch
 from torch import nn
@@ -12,49 +17,46 @@ import numpy as np
 
 class XVLModel(nn.Module):
     def __init__(self,
-                 tokenizer=None,
                  config=None,
                  ):
         super().__init__()
 
-        self.tokenizer = tokenizer
         self.distill = config['distill']
 
-        visual_encoder = vit_base(
+        self.visual_encoder = vit_base(
             img_size=(config['image_res'], config['image_res']),
             patch_size=config['patch_size'],
             drop_path_rate=config['drop_path'],
-            return_all_tokens=True,
         )
-        self.visual_encoder = visual_encoder
 
+        self.tokenizer, _ = get_cxr_bert()
         config_encoder = BertConfig.from_json_file(config['bert_config'])
         self.text_encoder = BertModel(config=config_encoder, add_pooling_layer=False)
 
-        config_decoder = BertConfig.from_json_file(config['bert_config'])
+        config_decoder = BertConfig.from_json_file(config['fusion_config'])
         config_decoder.fusion_layer = 0
-        config_decoder.num_hidden_layers = 6
-        self.text_decoder = BertLMHeadModel(config=config_decoder)
+        config_decoder.num_hidden_layers = 4
+        self.fusion_decoder = BertLMHeadModel(config=config_decoder)
 
         if self.distill:
-            visual_encoder_m = vit_base(
-                img_size=(config['image_res'], config['image_res']),
-                patch_size=config['patch_size'],
-                return_all_tokens=True,
-            )
-            self.visual_encoder_m = visual_encoder_m
+            self.visual_encoder_m = vit_base(
+            img_size=(config['image_res'], config['image_res']),
+            patch_size=config['patch_size'],
+            drop_path_rate=config['drop_path'],
+        )
+
             self.text_encoder_m = BertModel(config=config_encoder, add_pooling_layer=False)
-            self.text_decoder_m = BertLMHeadModel(config=config_decoder)
+            self.fusion_decoder_m = BertLMHeadModel(config=config_decoder)
             self.model_pairs = [[self.visual_encoder, self.visual_encoder_m],
                                 [self.text_encoder, self.text_encoder_m],
-                                [self.text_decoder, self.text_decoder_m],
+                                [self.fusion_decoder, self.fusion_decoder_m],
                                 ]
             self.copy_params()
             self.momentum = config['momentum']
 
     def forward(self, image, quesiton, answer=None, alpha=0, k=None, weights=None, train=True):
 
-        image_embeds_raw = self.visual_encoder.get_intermediate_layers(image, 1)[0]
+        image_embeds_raw = self.visual_encoder(image)
         image_embeds = image_embeds_raw
         image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
 
@@ -63,6 +65,11 @@ class XVLModel(nn.Module):
             k: number of answers for each question
             weights: weight for each answer
             '''
+            answer = self.tokenizer.batch_encode_plus(batch_text_or_text_pairs=answer,
+                                                    add_special_tokens=True,
+                                                    padding='longest',
+                                                    return_tensors='pt').to(image.device)
+
             answer_targets = answer.input_ids.masked_fill(answer.input_ids == self.tokenizer.pad_token_id, -100)
 
             question_output = self.text_encoder(quesiton.input_ids,
@@ -82,7 +89,7 @@ class XVLModel(nn.Module):
             if self.distill:
                 with torch.no_grad():
                     self._momentum_update()
-                    image_embeds_m_raw = self.visual_encoder_m.get_intermediate_layers(image, 1)[0]
+                    image_embeds_m_raw = self.visual_encoder_m(image)
                     image_embeds_m = image_embeds_m_raw
                     question_output_m = self.text_encoder_m(quesiton.input_ids,
                                                             attention_mask=quesiton.attention_mask,

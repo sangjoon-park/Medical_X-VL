@@ -242,7 +242,7 @@ def predict(loader, model, verbose=0):
     with torch.no_grad():
         for i, data in enumerate(tqdm(loader)):
             image = data[0]
-            texts = data[1]
+            texts = data[1] # as list
             label = data[2]
 
             y_true.append(label.numpy())
@@ -260,7 +260,10 @@ def predict(loader, model, verbose=0):
 
             logits = []
 
-            text_input = model.text_engine.tokenize_input_prompts(prompts=texts, verbose=True).to(image.device)
+            text_input = model.tokenizer.batch_encode_plus(batch_text_or_text_pairs=texts,
+                                                           add_special_tokens=True,
+                                                           padding='longest',
+                                                           return_tensors='pt').to(image.device)
 
             with torch.no_grad():
                 text_output = model.text_encoder(text_input.input_ids, attention_mask=text_input.attention_mask,

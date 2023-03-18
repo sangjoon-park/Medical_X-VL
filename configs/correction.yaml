@@ -1,0 +1,70 @@
+train_img_base:  '/media/hjy/JY2/Share/Medspeech/data/image/Train/'
+train_wave_base:  '/media/hjy/JY2/Share/Medspeech/data/speech_text/Train/'
+train_text_base:  '/media/hjy/JY2/Share/Medspeech/data/text/Train/'
+
+test_img_base:  '/media/hjy/JY2/Share/Medspeech/data_real/image/'
+test_wave_base:  '/media/hjy/JY2/Share/Medspeech/data_real/speech_text/'
+test_text_base:  '/media/hjy/JY2/Share/Medspeech/data_real/text/'
+
+image_res: 224
+batch_size_train: 32
+batch_size_test: 1
+k_test: 10
+max_words_length: 120
+
+eos_token: 3
+bos_token: 2
+
+alpha: 0.4
+distill: False
+warm_up: True
+momentum: 0.995
+
+eos: '[SEP]'
+
+bert_config: 'configs/config_bert.json'
+
+optimizer: {opt: adamW, lr: 1e-4, weight_decay: 0.1}
+schedular: {sched: cosine, lr: 1e-4, epochs: 10, min_lr: 1e-5, decay_rate: 1, warmup_lr: 1e-5, warmup_epochs: 2, cooldown_epochs: 0}
+#optimizer: {opt: adamW, lr: 1e-5, weight_decay: 0.02}
+#schedular: {sched: cosine, lr: 1e-5, epochs: 50, min_lr: 1e-6, decay_rate: 1, warmup_lr: 1e-6, warmup_epochs: 10, cooldown_epochs: 0}
+
+
+# iBOT specific options
+patch_size: 16
+out_dim: 8192
+patch_out_dim: 8192
+shared_head: True
+shared_head_teacher: True
+norm_last_layer: False
+norm_in_head: None
+act_in_head: 'gelu'
+use_masked_im_modeling: True
+pred_ratio: 0.3
+pred_ratio_var: 0.
+pred_shape: 'block'
+pred_start_epoch: 0
+lambda1: 1.0
+lambda2: 1.0
+warmup_teacher_temp: 0.04
+teacher_temp: 0.04
+warmup_teacher_patch_temp: 0.04
+teacher_patch_temp: 0.07
+warmup_teacher_temp_epochs: 3
+use_fp16: False
+clip_grad: 3.0
+drop_path: 0.1
+freeze_last_layer: 1
+global_crops_scale: [0.5, 1.0]
+local_crops_scale: [0.2, 0.5]
+global_crops_number: 2
+local_crops_number: 8
+
+
+
+
+
+
+
+
+

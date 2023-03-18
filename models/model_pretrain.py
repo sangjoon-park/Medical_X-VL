@@ -80,7 +80,7 @@ class XVLModel(nn.Module):
         print(msg)
 
         self.tokenizer, self.text_encoder = get_cxr_bert()
-        self.text_engine = TextInferenceEngine(text_model=self.text_encoder, tokenizer=self.tokenizer)
+        # self.text_engine = TextInferenceEngine(text_model=self.text_encoder, tokenizer=self.tokenizer)
 
         self.mlm_probability = config['mlm_probability']
         embed_dim = config['embed_dim']
@@ -141,12 +141,12 @@ class XVLModel(nn.Module):
         caption = text.copy()
 
         bs = image.size(0)
-        text = self.text_engine.tokenize_input_prompts(prompts=text, verbose=True).to(image.device)
+        # text = self.text_engine.tokenize_input_prompts(prompts=text, verbose=True).to(image.device)
 
-        # text = self.tokenizer.batch_encode_plus(batch_text_or_text_pairs=text,
-        #                                                     add_special_tokens=True,
-        #                                                     padding='longest',
-        #                                                     return_tensors='pt').to(image.device)
+        text = self.tokenizer.batch_encode_plus(batch_text_or_text_pairs=text,
+                                                            add_special_tokens=True,
+                                                            padding='longest',
+                                                            return_tensors='pt').to(image.device)
 
         image_embeds = self.visual_encoder(image_aug)
         image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
@@ -184,8 +184,11 @@ class XVLModel(nn.Module):
                 sentences = split(caption[j])
                 sent_len = len(sentences)
                 for i in range(sent_len):
-                    sentence = sentences[i]
-                    sentence = self.text_engine.tokenize_input_prompts(prompts=sentence, verbose=True).to(image.device)
+                    sentence = [sentences[i]]
+                    sentence = self.tokenizer.batch_encode_plus(batch_text_or_text_pairs=sentence,
+                                                            add_special_tokens=True,
+                                                            padding='longest',
+                                                            return_tensors='pt').to(image.device)
                     text_input_l, text_attention_mask_l = sentence.input_ids, sentence.attention_mask
                     text_output_l = self.text_encoder_m(text_input_l, attention_mask=text_attention_mask_l,
                                                              return_dict=True)

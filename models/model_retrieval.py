@@ -70,7 +70,7 @@ class XVLModel(nn.Module):
         # bert_config = BertConfig.from_json_file(config['bert_config'])
         # self.text_encoder = BertModel(config=bert_config, add_pooling_layer=False)
 
-        self.text_engine = TextInferenceEngine(text_model=self.text_encoder, tokenizer=self.tokenizer)
+        # self.text_engine = TextInferenceEngine(text_model=self.text_encoder, tokenizer=self.tokenizer)
 
         vision_width = config['vision_width']
         fusion_config = BertConfig.from_json_file(config['fusion_config'])
