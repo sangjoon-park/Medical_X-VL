@@ -1,10 +1,4 @@
-train_img_base:  '/media/hjy/JY2/Share/Medspeech/data/image/Train/'
-train_wave_base:  '/media/hjy/JY2/Share/Medspeech/data/speech_text/Train/'
-train_text_base:  '/media/hjy/JY2/Share/Medspeech/data/text/Train/'
-
-test_img_base:  '/media/hjy/JY2/Share/Medspeech/data_real/image/'
-test_wave_base:  '/media/hjy/JY2/Share/Medspeech/data_real/speech_text/'
-test_text_base:  '/media/hjy/JY2/Share/Medspeech/data_real/text/'
+train_file: ['/COVID_8TB/sangjoon/mimic_CXR/cxr.h5', '/COVID_8TB/sangjoon/mimic_CXR/mimic_impressions_final.csv']
 
 image_res: 224
 batch_size_train: 32
@@ -23,6 +17,7 @@ momentum: 0.995
 eos: '[SEP]'
 
 bert_config: 'configs/config_bert.json'
+fusion_config: 'configs/config_fusion.json'
 
 optimizer: {opt: adamW, lr: 1e-4, weight_decay: 0.1}
 schedular: {sched: cosine, lr: 1e-4, epochs: 10, min_lr: 1e-5, decay_rate: 1, warmup_lr: 1e-5, warmup_epochs: 2, cooldown_epochs: 0}

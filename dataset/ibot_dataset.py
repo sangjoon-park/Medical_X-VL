@@ -704,7 +704,7 @@ class CXRTestDataset(Dataset):
         else:
             label = 0
 
-        return output, error_imp, label
+        return output, error_imp, impression, label
 
 
 class CXRTrainDataset(Dataset):
@@ -736,7 +736,7 @@ class CXRTrainDataset(Dataset):
         entire_texts = pd.read_csv(corpus_dir)
         entire_labels = pd.read_csv(label_dir)
 
-        self.error_generator = ErrorGenerator(entire_texts, entire_labels, entire_pair, probability=0.5)
+        self.error_generator = ErrorGenerator(entire_texts, entire_labels, entire_pair, probability=0.05)
 
         self.img_dset = h5py.File(ann_file[0], 'r')['cxr']
         self.df = pd.read_csv(ann_file[1])
@@ -826,7 +826,7 @@ class CXRTrainDataset(Dataset):
         impression = self.df.iloc[index].impression
         impression = pre_caption(impression, self.max_words)
 
-        error_imp = self.error_generator(impression, id, O=False, C=False, FP=False, FN=False, L=False, E=False, M=True)
+        error_imp = self.error_generator(impression, O=True, C=True, FP=True, FN=True, L=True, E=True, M=True)
         error_imp = pre_caption(error_imp)
 
         if impression != error_imp:
@@ -834,4 +834,4 @@ class CXRTrainDataset(Dataset):
         else:
             label = 0
 
-        return output, error_imp, label
+        return output, error_imp, impression, label

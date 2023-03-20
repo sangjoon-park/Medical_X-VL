@@ -19,10 +19,14 @@ from dataset.utils import pre_caption
 import json
 
 class ErrorGenerator(object):
-    def __init__(self, entire_corpus, probability=0.5):
+    def __init__(self, entire_corpus, probability=0.5, random_state=777):
         'probability: individual probability'
         self.probability = probability
         self.entire_corpus = entire_corpus
+
+        random.seed(random_state)
+        np.random.seed(random_state)
+
         # self.entire_label = entire_label
         #
         # if entire_pair:
@@ -159,9 +163,9 @@ class ErrorGenerator(object):
         #     json.dump(self.entire_pair, f)
 
     def location(self, report):
-        keywords = ['left', 'right', 'left-sided', 'right-sided', 'upper', 'lower', 'apical', 'basal', 'central', 'peripheral']
+        keywords = ['left', 'right', 'left-sided', 'right-sided', 'upper', 'lower', 'apical', 'basal']
         counter_keywords = {'left': 'right', 'right': 'left', 'left-sided': 'right-sided', 'right-sided': 'left-sided', 'upper': 'lower', 'lower': 'upper', 'apical': 'basal',
-                            'basal': 'apical', 'central': 'peripheral', 'peripheral': 'central'}
+                            'basal': 'apical'}
 
         text_split = report.split()
         error_report = []

@@ -1,5 +1,5 @@
 from functools import partial
-from models.ibot_vit import VisionTransformer, interpolate_pos_embed, vit_base, vit_small
+from models.vit import VisionTransformer, interpolate_pos_embed, vit_base
 from models.xbert import BertConfig, BertModel, BertLMHeadModel
 from models.vit import VisionTransformer as VisionTransformer_deit
 from health_multimodal.text.utils import get_cxr_bert
@@ -21,6 +21,7 @@ class XVLModel(nn.Module):
                  ):
         super().__init__()
 
+        self.config = config
         self.distill = config['distill']
 
         self.visual_encoder = vit_base(
@@ -54,7 +55,7 @@ class XVLModel(nn.Module):
             self.copy_params()
             self.momentum = config['momentum']
 
-    def forward(self, image, quesiton, answer=None, alpha=0, k=None, weights=None, train=True):
+    def forward(self, image, stt_text, answer=None, alpha=0, k=None, weights=None, train=True):
 
         image_embeds_raw = self.visual_encoder(image)
         image_embeds = image_embeds_raw
@@ -65,84 +66,111 @@ class XVLModel(nn.Module):
             k: number of answers for each question
             weights: weight for each answer
             '''
+
+            # Embed into tokens
+            stt_text = self.tokenizer.batch_encode_plus(batch_text_or_text_pairs=stt_text,
+                                                    add_special_tokens=True,
+                                                    padding='longest',
+                                                    return_tensors='pt').to(image.device)
+
             answer = self.tokenizer.batch_encode_plus(batch_text_or_text_pairs=answer,
                                                     add_special_tokens=True,
                                                     padding='longest',
                                                     return_tensors='pt').to(image.device)
 
             answer_targets = answer.input_ids.masked_fill(answer.input_ids == self.tokenizer.pad_token_id, -100)
-
-            question_output = self.text_encoder(quesiton.input_ids,
-                                                attention_mask=quesiton.attention_mask,
+            stt_text_output = self.text_encoder(stt_text.input_ids,
+                                                attention_mask=stt_text.attention_mask,
                                                 encoder_hidden_states=image_embeds,
                                                 encoder_attention_mask=image_atts,
                                                 return_dict=True)
 
-            question_states = []
-            question_atts = []
-            for b, n in enumerate(k):
-                question_states += [question_output.last_hidden_state[b]] * n
-                question_atts += [quesiton.attention_mask[b]] * n
-            question_states = torch.stack(question_states, 0)
-            question_atts = torch.stack(question_atts, 0)
+            # stt_text_states = []
+            # stt_text_atts   = []
+            # for b, n in enumerate(k):
+            #     stt_text_states += [stt_text_output.last_hidden_state[b]]
+            #     stt_text_atts   += [stt_text.attention_mask[b]]
+            # stt_text_states = torch.stack(stt_text_states, 0)
+            # stt_text_atts   = torch.stack(stt_text_atts, 0)
+
+            stt_text_states = stt_text_output.last_hidden_state
+            stt_text_atts = stt_text.attention_mask
 
             if self.distill:
                 with torch.no_grad():
                     self._momentum_update()
                     image_embeds_m_raw = self.visual_encoder_m(image)
                     image_embeds_m = image_embeds_m_raw
-                    question_output_m = self.text_encoder_m(quesiton.input_ids,
-                                                            attention_mask=quesiton.attention_mask,
+                    stt_text_output_m = self.text_encoder_m(stt_text.input_ids,
+                                                            attention_mask=stt_text.attention_mask,
                                                             encoder_hidden_states=image_embeds_m,
                                                             encoder_attention_mask=image_atts,
                                                             return_dict=True)
 
-                    question_states_m = []
-                    for b, n in enumerate(k):
-                        question_states_m += [question_output_m.last_hidden_state[b]] * n
-                    question_states_m = torch.stack(question_states_m, 0)
+                    # stt_text_states_m   = []
+                    # for b, n in enumerate(k):
+                    #     stt_text_states_m += [stt_text_output_m.last_hidden_state[b]]
+                    # stt_text_states_m   = torch.stack(stt_text_states_m, 0)
+                    stt_text_states_m = stt_text_output_m.last_hidden_state
 
-                    logits_m = self.text_decoder_m(answer.input_ids,
+                    logits_m = self.fusion_decoder_m(answer.input_ids,
                                                    attention_mask=answer.attention_mask,
-                                                   encoder_hidden_states=question_states_m,
-                                                   encoder_attention_mask=question_atts,
+                                                   encoder_hidden_states=stt_text_states_m,
+                                                   encoder_attention_mask=stt_text_atts,
                                                    return_logits=True,
                                                    )
-
-                answer_output = self.text_decoder(answer.input_ids,
-                                                  attention_mask=answer.attention_mask,
-                                                  encoder_hidden_states=question_states,
-                                                  encoder_attention_mask=question_atts,
-                                                  labels=answer_targets,
-                                                  return_dict=True,
-                                                  soft_labels=F.softmax(logits_m, dim=-1),
-                                                  alpha=alpha,
-                                                  reduction='none',
-                                                  )
+                corrected_output = self.fusion_decoder(answer.input_ids,
+                                                     attention_mask=answer.attention_mask,
+                                                     encoder_hidden_states=stt_text_states,
+                                                     encoder_attention_mask=stt_text_atts,
+                                                     labels=answer_targets,
+                                                     return_dict=True,
+                                                     soft_labels=F.softmax(logits_m, dim=-1),
+                                                     reduction='none',
+                                                     )
             else:
-                answer_output = self.text_decoder(answer.input_ids,
-                                                  attention_mask=answer.attention_mask,
-                                                  encoder_hidden_states=question_states,
-                                                  encoder_attention_mask=question_atts,
-                                                  labels=answer_targets,
-                                                  return_dict=True,
-                                                  reduction='none',
-                                                  )
-            loss = weights * answer_output.loss
+                corrected_output = self.fusion_decoder(answer.input_ids,
+                                                     attention_mask=answer.attention_mask,
+                                                     encoder_hidden_states=stt_text_states,
+                                                     encoder_attention_mask=stt_text_atts,
+                                                     labels=answer_targets,
+                                                     return_dict=True,
+                                                     reduction='none',
+                                                     )
+            loss = corrected_output.loss
             loss = loss.sum() / image.size(0)
-
             return loss
 
-
         else:
-            question_output = self.text_encoder(quesiton.input_ids,
-                                                attention_mask=quesiton.attention_mask,
-                                                encoder_hidden_states=image_embeds,
-                                                encoder_attention_mask=image_atts,
-                                                return_dict=True)
-            topk_ids, topk_probs = self.rank_answer(question_output.last_hidden_state, quesiton.attention_mask,
-                                                    answer.input_ids, answer.attention_mask, k)
-            return topk_ids, topk_probs
+            fused_output = self.text_encoder(stt_text.input_ids,
+                                             attention_mask=stt_text.attention_mask,
+                                             encoder_hidden_states=image_embeds,
+                                             encoder_attention_mask=image_atts,
+                                             return_dict=True)
+
+            fused_states = fused_output.last_hidden_state
+            fused_atts = stt_text.attention_mask
+
+            bos_token = answer
+            seq = torch.cuda.LongTensor([bos_token]).repeat(fused_states.size(0), 1).to(image.device)  # bos token
+            for i in range(self.config['max_words_length']):
+                next_token = self.pred_next(fused_states, fused_atts, seq)
+                seq = torch.cat([seq, next_token.unsqueeze(0)], dim=1)
+                if next_token[0] == int(self.config['eos_token']):
+                    break
+            return seq
+
+    def pred_next(self, fused_states, fused_atts, seq_ids):
+        output          = self.text_decoder(seq_ids,
+                                  encoder_hidden_states=fused_states,
+                                  encoder_attention_mask=fused_atts,
+                                  return_dict=True,
+                                  reduction='none',
+                                  )
+        logits          = output.logits[:, -1, :]  # first token's logit
+        prob_next_token = F.softmax(logits, dim=1)
+        pred_next_token = torch.argmax(prob_next_token, dim=1)
+        return pred_next_token
 
     @torch.no_grad()
     def copy_params(self):
@@ -156,71 +184,3 @@ class XVLModel(nn.Module):
         for model_pair in self.model_pairs:
             for param, param_m in zip(model_pair[0].parameters(), model_pair[1].parameters()):
                 param_m.data = param_m.data * self.momentum + param.data * (1. - self.momentum)
-
-    def rank_answer(self, question_states, question_atts, answer_ids, answer_atts, k):
-
-        num_ques = question_states.size(0)
-        start_ids = answer_ids[0, 0].repeat(num_ques, 1)  # bos token
-
-        start_output = self.text_decoder(start_ids,
-                                         encoder_hidden_states=question_states,
-                                         encoder_attention_mask=question_atts,
-                                         return_dict=True,
-                                         reduction='none')
-        logits = start_output.logits[:, 0, :]  # first token's logit
-
-        # topk_probs: top-k probability
-        # topk_ids: [num_question, k]
-        answer_first_token = answer_ids[:, 1]
-        prob_first_token = F.softmax(logits, dim=1).index_select(dim=1, index=answer_first_token)
-        topk_probs, topk_ids = prob_first_token.topk(k, dim=1)
-
-        # answer input: [num_question*k, answer_len]
-        input_ids = []
-        input_atts = []
-        for b, topk_id in enumerate(topk_ids):
-            input_ids.append(answer_ids.index_select(dim=0, index=topk_id))
-            input_atts.append(answer_atts.index_select(dim=0, index=topk_id))
-        input_ids = torch.cat(input_ids, dim=0)
-        input_atts = torch.cat(input_atts, dim=0)
-
-        targets_ids = input_ids.masked_fill(input_ids == self.tokenizer.pad_token_id, -100)
-
-        # repeat encoder's output for top-k answers
-        question_states = tile(question_states, 0, k)
-        question_atts = tile(question_atts, 0, k)
-
-        output = self.text_decoder(input_ids,
-                                   attention_mask=input_atts,
-                                   encoder_hidden_states=question_states,
-                                   encoder_attention_mask=question_atts,
-                                   labels=targets_ids,
-                                   return_dict=True,
-                                   reduction='none')
-
-        answer_loss = output.loss
-        answer_loss = answer_loss.view(input_ids.size(0), -1)
-
-        # topk_prob: first token probability
-        topk_probs = topk_probs.view(-1, 1)
-        log_probs = torch.cat([topk_probs.log(), -answer_loss], dim=1)
-
-        # re-calculate log probabilities for the answer sequences using chain rule
-        log_probs_sum = log_probs.sum(1)
-        log_probs_sum = log_probs_sum.view(num_ques, k)
-
-        topk_probs = F.softmax(log_probs_sum, dim=-1)
-        # get top-k after re-ranking
-        topk_probs, rerank_id = topk_probs.topk(k, dim=1)
-        topk_ids = torch.gather(topk_ids, 1, rerank_id)
-
-        return topk_ids, topk_probs
-
-
-def tile(x, dim, n_tile):
-    init_dim = x.size(dim)
-    repeat_idx = [1] * x.dim()
-    repeat_idx[dim] = n_tile
-    x = x.repeat(*(repeat_idx))
-    order_index = torch.LongTensor(np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)]))
-    return torch.index_select(x, dim, order_index.to(x.device))

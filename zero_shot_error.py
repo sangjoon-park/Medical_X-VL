@@ -10,11 +10,11 @@ import sys
 sys.path.append('../../')
 
 from eval_zero import evaluate, bootstrap
-from zero_error import make, make_true_labels, run_softmax_eval
+from zero_error_mimic import make, make_true_labels, run_softmax_eval
 from sklearn.metrics import roc_auc_score
 from sklearn.utils import resample
 
-def compute_cis(data, confidence_level=0.05):
+def compute_cis(data, confidence_level=0.01):
     """
     FUNCTION: compute_cis
     ------------------------------------------------------
@@ -53,7 +53,7 @@ report_filepath: str = './data/openi/Test_selected.jsonl'
 
 cxr_true_labels_path: Optional[
     str] = '/home/depecher/PycharmProjects/CheXzero/data/groundtruth.csv'  # (optional for evaluation) if labels are provided, provide path
-model_dir: str = '/COVID_8TB/sangjoon/chexzero_checkpoint/20230316_teacher/best/'  # where pretrained models are saved (.pt)
+model_dir: str = '/COVID_8TB/sangjoon/chexzero_checkpoint/20230316_teacher_alpha0.3_simple_no_sentencewise/best_5/'  # where pretrained models are saved (.pt)
 predictions_dir: Path = Path('/home/depecher/PycharmProjects/CheXzero/predictions')  # where to save predictions
 cache_dir: str = predictions_dir / "cached"  # where to cache ensembled predictions
 

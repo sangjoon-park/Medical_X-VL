@@ -15,7 +15,6 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
-import torchaudio
 
 from models.model_vqa import XVLModel
 from models.vit import interpolate_pos_embed
@@ -23,7 +22,7 @@ import pandas as pd
 
 import funcs
 from dataset.utils import save_result
-from dataset import create_dataset, create_sampler, vqa_collate_fn, create_error_loader
+from dataset import create_dataset, create_sampler, create_error_loader
 from dataset.utils import pre_question
 
 from scheduler import create_scheduler
@@ -72,7 +71,7 @@ def train(model, data_loader, optimizer, epoch, warmup_steps, device, scheduler,
 
 
 @torch.no_grad()
-def evaluation(model, data_loader, tokenizer, device, config):
+def evaluation(model, data_loader, device, config):
     # test
     model.eval()
 
@@ -84,9 +83,12 @@ def evaluation(model, data_loader, tokenizer, device, config):
     bos_token = config['bos_token']
     for n, (image, error_text, answer, label) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         image = image.to(device, non_blocking=True)
-        stt_text_input = tokenizer(error_text, padding='longest', return_tensors="pt").to(device)
+        stt_text_input = model.module.tokenizer.batch_encode_plus(batch_text_or_text_pairs=error_text,
+                                                    add_special_tokens=True,
+                                                    padding='longest',
+                                                    return_tensors='pt').to(device)
         candidates = model(image, stt_text_input, bos_token, train=False)
-        corrected_text = tokenizer.decode(candidates[0])
+        corrected_text = model.module.tokenizer.decode(candidates[0])
         result.append({"stt": error_text, "corrected": corrected_text, "answer": answer})
     return result
 
@@ -108,7 +110,7 @@ def main(args, config):
     warmup_steps = config['schedular']['warmup_epochs']
 
     #### Dataset ####
-    print("Creating stt correction datasets")
+    print("Creating error correction datasets")
     datasets = create_dataset('error_correction', config)
 
     if args.distributed:
@@ -121,7 +123,7 @@ def main(args, config):
     train_loader, test_loader = create_error_loader(datasets, samplers,
                                               batch_size=[config['batch_size_train'], config['batch_size_test']],
                                               num_workers=[4, 4], is_trains=[True, False],
-                                              collate_fns=[vqa_collate_fn, None])
+                                              collate_fns=[None, None])
 
     #### Model ####
     print("Creating model")
@@ -140,23 +142,45 @@ def main(args, config):
         if not args.resume:
             if not args.evaluate:
                 # reshape positional embedding to accomodate for image resolution change
-                pos_embed_reshaped  = interpolate_pos_embed(state_dict['visual_encoder.backbone.pos_embed'],model.visual_encoder)
-                state_dict['visual_encoder.backbone.pos_embed'] = pos_embed_reshaped
-                if config['distill']:
-                    m_pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder_m.backbone.pos_embed'],model.visual_encoder_m)
-                    state_dict['visual_encoder_m.backbone.pos_embed'] = m_pos_embed_reshaped
-                state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
+                pos_embed_reshaped  = interpolate_pos_embed(state_dict['visual_encoder.pos_embed'],model.visual_encoder)
+                state_dict['visual_encoder.pos_embed'] = pos_embed_reshaped
 
                 if config['distill']:
                     m_pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder_m.pos_embed'],model.visual_encoder_m)
                     state_dict['visual_encoder_m.pos_embed'] = m_pos_embed_reshaped
+                # state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
+
+                # if config['distill']:
+                #     m_pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder_m.pos_embed'],model.visual_encoder_m)
+                #     state_dict['visual_encoder_m.pos_embed'] = m_pos_embed_reshaped
+
+                # for key in list(state_dict.keys()):
+                #     encoder_key = key.replace('.bert', '')
+                #     state_dict[encoder_key] = state_dict[key]
+                    # if 'text_encoder.bert' in key:
+                    #     encoder_key = key.replace('.bert', '')
+                    #     state_dict[encoder_key] = state_dict[key]
+                    #     del state_dict[key]
+                    # if 'text_encoder_m.bert' in key:
+                    #     encoder_key = key.replace('text_encoder_m.bert', 'text_encoder_m')
+                    #     state_dict[encoder_key] = state_dict[key]
+                    #     del state_dict[key]
+                    #
+                    # if 'fusion_encoder.bert' in key:
+                    #     encoder_key = key.replace('fusion_encoder.bert', 'fusion_encoder')
+                    #     state_dict[encoder_key] = state_dict[key]
+                    #     del state_dict[key]
+                    # if 'fusion_encoder_m.bert' in key:
+                    #     encoder_key = key.replace('fusion_encoder_m.bert', 'fusion_encoder_m')
+                    #     state_dict[encoder_key] = state_dict[key]
+                    #     del state_dict[key]
 
                 for key in list(state_dict.keys()):
                     if 'bert' in key:
                         encoder_key = key.replace('bert.', '')
                         state_dict[encoder_key] = state_dict[key]
                         # intialize text decoder as multimodal encoder (last 6 layers of model.text_encoder)
-                    if 'text_encoder' in key:
+                    if 'fusion_encoder' in key:
                         if 'layer' in key:
                             encoder_keys = key.split('.')
                             layer_num = int(encoder_keys[4])
@@ -169,7 +193,7 @@ def main(args, config):
                                 encoder_key = '.'.join(encoder_keys)
                         else:
                             encoder_key = key
-                        decoder_key = encoder_key.replace('text_encoder', 'text_decoder')
+                        decoder_key = encoder_key.replace('fusion_encoder', 'fusion_decoder')
                         state_dict[decoder_key] = state_dict[key]
 
                         del state_dict[key]
@@ -190,6 +214,11 @@ def main(args, config):
 
     print("Start training")
     start_time = time.time()
+
+    with torch.no_grad():
+        corrected_results = evaluation(model, test_loader, device, config)
+        result_file = save_result(corrected_results, args.result_dir, 'Test_corrected_result')
+
     # if args.evaluate:
     #     with torch.no_grad():
     #         corrected_results   = evaluation(model, test_loader, tokenizer, device, config)
@@ -220,7 +249,7 @@ def main(args, config):
                         }
             torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint.pth'))
 
-        corrected_results = evaluation(model, test_loader, tokenizer, device, config)
+        corrected_results = evaluation(model, test_loader, device, config)
         result_file = save_result(corrected_results, args.result_dir, 'Valid_corrected_result_epoch%d' % epoch)
 
         dist.barrier()
@@ -235,7 +264,7 @@ if __name__ == '__main__':
     parser.add_argument('--config', default='./configs/correction.yaml')
     parser.add_argument('--checkpoint', default='assets_withvision/correction/checkpoint.pth')
     parser.add_argument('--output_dir', default='assets_withvision/correction')
-    parser.add_argument('--evaluate', action='store_false')
+    parser.add_argument('--evaluate', action='store_true')
     parser.add_argument('--text_encoder', default='bert-base-uncased')
     parser.add_argument('--text_decoder', default='bert-base-uncased')
     parser.add_argument('--device', default='cuda')
@@ -243,7 +272,7 @@ if __name__ == '__main__':
     parser.add_argument('--world_size', default=1, type=int, help='number of distributed processes')
     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
     parser.add_argument('--distributed', default=True, type=bool)
-    parser.add_argument('--resume', default=True, type=bool)
+    parser.add_argument('--resume', default=False, type=bool)
     args = parser.parse_args()
 
     config = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)

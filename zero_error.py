@@ -69,7 +69,7 @@ class CXRTestDataset(data.Dataset):
         self.df = entire_corpus
         self.ids = list(self.df.id)
 
-        self.error_generator = ErrorGenerator(entire_corpus=entire_corpus, probability=0.05)
+        self.error_generator = ErrorGenerator(entire_corpus=entire_corpus, probability=0.05, random_state=77)
             
     def __len__(self):
         return len(self.ids)
@@ -129,16 +129,16 @@ class CXRTestDataset(data.Dataset):
 
         impression = self.df[self.df.id == id].text.values[0]
 
-        img = cv2.imread(str(img_path))
+        img = cv2.imread(str(img_path), 0)
         # convert to PIL Image object
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img_pil = Image.fromarray(img)
         # preprocess
         image = preprocess(img_pil, desired_size=320)
-        # image = self._resize_img(np.array(image), 512)
-        # image = Image.fromarray(image)
+        image = self._resize_img(np.array(image), 240)
+        img_pil = Image.fromarray(image)
 
-        output = self.transforms(image)
+        output = self.transforms(img_pil)
 
         impression = pre_caption(impression, self.max_words)
 
