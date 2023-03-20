@@ -45,10 +45,10 @@ class ImageFolderMask(Dataset):
             impression = self.df.iloc[i].impression
             views = self.df.iloc[i].views
             # if split == mode and findings != 'NONE' and impression != 'NONE' and type(findings) != float and type(impression) != float:
-            # if split == mode:
+            if not split == 'test':
             #     # if views == 'AP' or views == 'PA':
-            if (impression != 'NONE' and type(impression) != float and len(shuffle(pre_caption(impression, 120))) > 1):
-                self.index_mapping.append(i)
+                if (impression != 'NONE' and type(impression) != float and len(shuffle(pre_caption(impression, 120))) > 1):
+                    self.index_mapping.append(i)
 
         if len(self.img_dset) != len(self.df):
             raise AssertionError()
@@ -598,7 +598,116 @@ def preprocess(img, desired_size=320):
                         (desired_size-new_size[1])//2))
     return new_img
 
-class CXRTestDataset(Dataset):
+# class CXRTestDataset(Dataset):
+#     """Represents an abstract HDF5 dataset.
+#
+#     Input params:
+#         img_path: Path to hdf5 file containing images.
+#         label_path: Path to file containing labels
+#         transform: PyTorch transform to apply to every data instance (default=None).
+#     """
+#
+#     def __init__(
+#             self,
+#             report_path: str,
+#             transform=None,
+#             max_words=120
+#     ):
+#         super().__init__()
+#         self.max_words = max_words
+#         self.transforms = transform
+#
+#         corpus_dir = './data/openi/Test_selected.jsonl'
+#
+#         entire_corpus = pd.read_json(corpus_dir, lines=True)
+#         self.df = entire_corpus
+#         self.ids = list(self.df.id)
+#
+#         self.error_generator = ErrorGenerator_openi(entire_corpus=entire_corpus, probability=0.05)
+#
+#     def __len__(self):
+#         return len(self.ids)
+#
+#     def _resize_img(self, img, scale):
+#         """
+#         Args:
+#             img - image as numpy array (cv2)
+#             scale - desired output image-size as scale x scale
+#         Return:
+#             image resized to scale x scale with shortest dimension 0-padded
+#         """
+#         size = img.shape
+#         max_dim = max(size)
+#         max_ind = size.index(max_dim)
+#
+#         # Resizing
+#         if max_ind == 0:
+#             # image is heigher
+#             wpercent = scale / float(size[0])
+#             hsize = int((float(size[1]) * float(wpercent)))
+#             desireable_size = (scale, hsize)
+#         else:
+#             # image is wider
+#             hpercent = scale / float(size[1])
+#             wsize = int((float(size[0]) * float(hpercent)))
+#             desireable_size = (wsize, scale)
+#         resized_img = cv2.resize(
+#             img, desireable_size[::-1], interpolation=cv2.INTER_AREA
+#         )  # this flips the desireable_size vector
+#
+#         # Padding
+#         if max_ind == 0:
+#             # height fixed at scale, pad the width
+#             pad_size = scale - resized_img.shape[1]
+#             left = int(np.floor(pad_size / 2))
+#             right = int(np.ceil(pad_size / 2))
+#             top = int(0)
+#             bottom = int(0)
+#         else:
+#             # width fixed at scale, pad the height
+#             pad_size = scale - resized_img.shape[0]
+#             top = int(np.floor(pad_size / 2))
+#             bottom = int(np.ceil(pad_size / 2))
+#             left = int(0)
+#             right = int(0)
+#         resized_img = np.pad(
+#             resized_img, [(top, bottom), (left, right)], "constant", constant_values=0
+#         )
+#
+#         return resized_img
+#
+#     def __getitem__(self, index):
+#         id = self.ids[index]
+#         img_path = self.df[self.df.id == id].img.values[0]
+#         img_path = img_path.replace('/home/data_storage/mimic-cxr/dataset/', '/COVID_8TB/sangjoon/vision_language/')
+#
+#         impression = self.df[self.df.id == id].text.values[0]
+#
+#         img = cv2.imread(str(img_path))
+#         # convert to PIL Image object
+#         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+#         img_pil = Image.fromarray(img)
+#         # preprocess
+#         image = preprocess(img_pil, desired_size=320)
+#         # image = self._resize_img(np.array(image), 512)
+#         # image = Image.fromarray(image)
+#
+#         output = self.transforms(image)
+#
+#         impression = pre_caption(impression, self.max_words)
+#
+#         error_imp = self.error_generator(impression, id, O=False, C=False, FP=False, FN=False, L=False, E=False, M=True)
+#         error_imp = pre_caption(error_imp)
+#
+#         if impression != error_imp:
+#             label = 1
+#         else:
+#             label = 0
+#
+#         return output, error_imp, impression, label
+
+
+class CXRTrainDataset(Dataset):
     """Represents an abstract HDF5 dataset.
 
     Input params:
@@ -609,7 +718,7 @@ class CXRTestDataset(Dataset):
 
     def __init__(
             self,
-            report_path: str,
+            ann_file,
             transform=None,
             max_words=120
     ):
@@ -617,16 +726,39 @@ class CXRTestDataset(Dataset):
         self.max_words = max_words
         self.transforms = transform
 
-        corpus_dir = './data/openi/Test_selected.jsonl'
+        corpus_dir = '/COVID_8TB/sangjoon/mimic_CXR/mimic_impressions_final.csv'
+        label_dir = '/COVID_8TB/sangjoon/mimic-cxr/mimic-cxr-2.0.0-chexpert.csv'
+        pair_dir = './entire_pair_final.json'
 
-        entire_corpus = pd.read_json(corpus_dir, lines=True)
-        self.df = entire_corpus
-        self.ids = list(self.df.id)
+        with open(pair_dir, 'r') as f:
+            entire_pair = json.load(f, encoding='cp949')
 
-        self.error_generator = ErrorGenerator_openi(entire_corpus=entire_corpus, probability=0.05)
+        entire_texts = pd.read_csv(corpus_dir)
+        entire_labels = pd.read_csv(label_dir)
+
+        self.error_generator = ErrorGenerator(entire_texts, entire_labels, entire_pair, probability=0.05)
+
+        self.img_dset = h5py.File(ann_file[0], 'r')['cxr']
+        self.df = pd.read_csv(ann_file[1])
+
+        self.index_mapping = []
+
+        for i in range(len(self.df)):
+            split = self.df.iloc[i].split
+            findings = self.df.iloc[i].findings
+            impression = self.df.iloc[i].impression
+            views = self.df.iloc[i].views
+            # if split == mode and findings != 'NONE' and impression != 'NONE' and type(findings) != float and type(impression) != float:
+            if not split == 'test':
+            #     # if views == 'AP' or views == 'PA':
+                if (impression != 'NONE' and type(impression) != float and len(shuffle(pre_caption(impression, 120))) > 1):
+                    self.index_mapping.append(i)
+
+        if len(self.img_dset) != len(self.df):
+            raise AssertionError()
 
     def __len__(self):
-        return len(self.ids)
+        return len(self.index_mapping)
 
     def _resize_img(self, img, scale):
         """
@@ -676,27 +808,25 @@ class CXRTestDataset(Dataset):
 
         return resized_img
 
-    def __getitem__(self, index):
-        id = self.ids[index]
-        img_path = self.df[self.df.id == id].img.values[0]
-        img_path = img_path.replace('/home/data_storage/mimic-cxr/dataset/', '/COVID_8TB/sangjoon/vision_language/')
+    def __getitem__(self, mapping_idx):
+        # ann = self.ann[index]
+        index = self.index_mapping[mapping_idx]
 
-        impression = self.df[self.df.id == id].text.values[0]
+        image = self.img_dset[index]
 
-        img = cv2.imread(str(img_path))
-        # convert to PIL Image object
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img_pil = Image.fromarray(img)
-        # preprocess
-        image = preprocess(img_pil, desired_size=320)
-        # image = self._resize_img(np.array(image), 512)
-        # image = Image.fromarray(image)
+        # image_path = self.ann[index]['image']
+        # image = cv2.imread(str(image_path), 0)
 
-        output = self.transforms(image)
+        image = self._resize_img(image, 512)
+        image = Image.fromarray(image)
 
+        output = self.transforms(image) / 255.
+
+        # impression
+        impression = self.df.iloc[index].impression
         impression = pre_caption(impression, self.max_words)
 
-        error_imp = self.error_generator(impression, id, O=False, C=False, FP=False, FN=False, L=False, E=False, M=True)
+        error_imp = self.error_generator(impression, O=True, C=True, FP=True, FN=True, L=True, E=True, M=True)
         error_imp = pre_caption(error_imp)
 
         if impression != error_imp:
@@ -707,7 +837,8 @@ class CXRTestDataset(Dataset):
         return output, error_imp, impression, label
 
 
-class CXRTrainDataset(Dataset):
+
+class CXRTestDataset(Dataset):
     """Represents an abstract HDF5 dataset.
 
     Input params:
@@ -749,10 +880,10 @@ class CXRTrainDataset(Dataset):
             impression = self.df.iloc[i].impression
             views = self.df.iloc[i].views
             # if split == mode and findings != 'NONE' and impression != 'NONE' and type(findings) != float and type(impression) != float:
-            # if split == mode:
+            if split == 'test':
             #     # if views == 'AP' or views == 'PA':
-            if (impression != 'NONE' and type(impression) != float and len(shuffle(pre_caption(impression, 120))) > 1):
-                self.index_mapping.append(i)
+                if (impression != 'NONE' and type(impression) != float and len(shuffle(pre_caption(impression, 120))) > 1):
+                    self.index_mapping.append(i)
 
         if len(self.img_dset) != len(self.df):
             raise AssertionError()

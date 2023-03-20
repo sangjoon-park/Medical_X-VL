@@ -6,7 +6,6 @@ from health_multimodal.text.utils import get_cxr_bert
 # from health_multimodal.image.model.model import get_biovil_resnet
 from health_multimodal.image.data.transforms import create_chest_xray_transform_for_inference, create_chest_xray_transform_for_train
 from health_multimodal.text.inference_engine import TextInferenceEngine
-import clip
 
 import torch
 from torch import nn
@@ -161,7 +160,7 @@ class XVLModel(nn.Module):
             return seq
 
     def pred_next(self, fused_states, fused_atts, seq_ids):
-        output          = self.text_decoder(seq_ids,
+        output = self.fusion_decoder(seq_ids,
                                   encoder_hidden_states=fused_states,
                                   encoder_attention_mask=fused_atts,
                                   return_dict=True,

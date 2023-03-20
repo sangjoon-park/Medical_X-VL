@@ -75,7 +75,7 @@ def create_dataset(dataset, config):
 
     elif dataset == 'error_correction':
         train_set = CXRTrainDataset(config['train_file'], transform=train_transform)
-        test_set = CXRTestDataset(report_path='./data/openi/Test_selected.jsonl', transform=test_transform)
+        test_set = CXRTestDataset(config['train_file'], transform=test_transform)
         return train_set, test_set
 
 

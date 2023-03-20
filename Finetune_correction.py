@@ -89,7 +89,7 @@ def evaluation(model, data_loader, device, config):
                                                     return_tensors='pt').to(device)
         candidates = model(image, stt_text_input, bos_token, train=False)
         corrected_text = model.module.tokenizer.decode(candidates[0])
-        result.append({"stt": error_text, "corrected": corrected_text, "answer": answer})
+        result.append({"error": error_text, "corrected": corrected_text, "label": answer})
     return result
 
 
