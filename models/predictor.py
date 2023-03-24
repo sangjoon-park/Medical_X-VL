@@ -53,12 +53,13 @@ class TextGenerator(object):
 
     def __init__(self,
                  args,
-                 encoder,
                  model,
                  vocab=None,
                  symbols=None,
                  global_scorer=None,
                  logger=None,
+                 bos_token=2,
+                 eos_token=3,
                  dump_beam=""):
         self.alpha = 0.6
 
@@ -67,15 +68,13 @@ class TextGenerator(object):
         self.cuda = (torch.cuda.device_count() > 0)
 
         self.args = args
-
-        self.encoder = encoder
         self.model = model
 
         # self.generator = self.model.generator
         self.vocab = vocab
         self.symbols = symbols
-        self.start_token = 2  # ['[PAD]']
-        self.end_token = 3  # '[PAD]']
+        self.start_token = bos_token  # ['[PAD]']
+        self.end_token = eos_token  # '[PAD]']
 
         self.global_scorer = global_scorer
         self.beam_size = args['beam_size']
@@ -196,18 +195,12 @@ class TextGenerator(object):
         dec_position_ids = None
 
         for step in range(max_length):
-            encoder_state = self.encoder.bert(alive_seq,
-                                         return_dict=True,
-                                         is_decoder=True,
-                                         mode='text'
-                                         )
-            dec_feat_seq = self.model(encoder_embeds=encoder_state.last_hidden_state,
+            dec_feat_seq = self.model(alive_seq,
                                       encoder_hidden_states=src_features,
                                       encoder_attention_mask=attention_mask,
                                       return_dict=True,
                                       is_decoder=True,
-                                      reduction='none',
-                                      mode='fusion')
+                                      reduction='none')
 
             dec_feat_seq = dec_feat_seq.logits[:, -1, :]
             vocab_size = dec_feat_seq.size(-1)

@@ -3,8 +3,6 @@ from bleu.bleu import Bleu
 from meteor.meteor import Meteor
 from rouge.rouge import Rouge
 from cider.cider import Cider
-import json
-from transformers import AutoTokenizer
 
 
 class COCOEvalCapDirect:
@@ -25,13 +23,12 @@ class COCOEvalCapDirect:
         res = {}
 
         print('tokenization... [my tokenizer]')
-        tokenizer = AutoTokenizer.from_pretrained("emilyalsentzer/Bio_ClinicalBERT")
 
         for key in self.keys:
-            gts[key] = [self.json_dic[key]['caption']]
-            res[key] = [self.json_dic[key]['predicted'].replace('[CLS] ', '').replace(' [SEP]','')]
-            a = self.json_dic[key]['caption']
-            b = self.json_dic[key]['predicted'].replace('[CLS] ', '').replace(' [SEP]','')
+            gts[key] = [self.json_dic[key]['label']]
+            res[key] = [self.json_dic[key]['pred'].replace('[CLS] ', '').replace(' [SEP]','')]
+            a = self.json_dic[key]['label']
+            b = self.json_dic[key]['pred'].replace('[CLS] ', '').replace(' [SEP]','')
             a = a
 
         # # =================================================

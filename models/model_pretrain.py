@@ -13,7 +13,8 @@ from health_multimodal.text.utils import get_cxr_bert
 # from health_multimodal.image.model.model import get_biovil_resnet
 from health_multimodal.image.data.transforms import create_chest_xray_transform_for_inference, create_chest_xray_transform_for_train
 from health_multimodal.text.inference_engine import TextInferenceEngine
-import clip
+
+from fuzzywuzzy import fuzz
 
 
 def load_clip(model_path=None, context_length=77):
@@ -257,26 +258,51 @@ class XVLModel(nn.Module):
 
         # select a negative image for each text
         image_embeds_neg = []
+        n = 0
         for b in range(bs):
-            try:
-                neg_idx = torch.multinomial(weights_t2i[b], 1).item()
-            except:
-                neg_idx = torch.randint(0, bs, (1,)).item()
-                while neg_idx == b:
+            while True:
+                try:
+                    neg_idx = torch.multinomial(weights_t2i[b], 1).item()
+                except:
                     neg_idx = torch.randint(0, bs, (1,)).item()
+                    while neg_idx == b:
+                        neg_idx = torch.randint(0, bs, (1,)).item()
+
+                n += 1
+                this = caption[b]
+                cand = caption[neg_idx]
+
+                if fuzz.token_sort_ratio(this, cand) < 80:
+                    break
+                if n > 100:
+                    break
+
             image_embeds_neg.append(image_embeds[neg_idx])
         image_embeds_neg = torch.stack(image_embeds_neg, dim=0)
 
         # select a negative text for each image
         text_embeds_neg = []
         text_atts_neg = []
+
+        n = 0
         for b in range(bs):
-            try:
-                neg_idx = torch.multinomial(weights_i2t[b], 1).item()
-            except:
-                neg_idx = torch.randint(0, bs, (1,)).item()
-                while neg_idx == b:
+            while True:
+                try:
+                    neg_idx = torch.multinomial(weights_i2t[b], 1).item()
+                except:
                     neg_idx = torch.randint(0, bs, (1,)).item()
+                    while neg_idx == b:
+                        neg_idx = torch.randint(0, bs, (1,)).item()
+
+                n += 1
+                this = caption[b]
+                cand = caption[neg_idx]
+
+                if fuzz.token_sort_ratio(this, cand) < 80:
+                    break
+                if n > 100:
+                    break
+
             text_embeds_neg.append(text_embeds[neg_idx])
             text_atts_neg.append(text.attention_mask[neg_idx])
         text_embeds_neg = torch.stack(text_embeds_neg, dim=0)

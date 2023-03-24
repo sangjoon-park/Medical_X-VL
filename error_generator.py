@@ -19,7 +19,7 @@ from dataset.utils import pre_caption
 import json
 
 class ErrorGenerator(object):
-    def __init__(self, entire_corpus, entire_labels, entire_pair=None, probability=0.2, random_state=1234):
+    def __init__(self, entire_corpus, entire_labels, entire_pair=None, probability=0.25, random_state=1234):
         'probability: individual probability'
         self.probability = probability
         self.entire_corpus = entire_corpus
@@ -298,34 +298,46 @@ class ErrorGenerator(object):
         else:
             return impression
 
-    def __call__(self, impression, O=False, C=False, FP=False, FN=False, L=False, E=False, M=False):
+    def __call__(self, impression, FP=False, FN=False, L=False, E=False, M=False, train=True):
         """
         Realistic error generation
         input: report (text)
         output: report with error (text)
         """
 
-        if O:
+        if train:
             if random.random() <= self.probability:
-                impression = self.omission(impression)
-        if C:
+                selected = random.randint(0, 4)
+                # if O:
+                #     if random.random() <= self.probability:
+                #         impression = self.omission(impression)
+                # if C:
+                #     if random.random() <= self.probability:
+                #         impression = self.confusion(impression)
+                if selected == 0:
+                    impression = self.positive(impression)
+                if selected == 1:
+                    impression = self.negative(impression)
+                if selected == 2:
+                    impression = self.location(impression)
+                if selected == 3:
+                    impression = self.extent(impression)
+                if selected == 4:
+                    impression = self.mismatch(impression)
+        else:
             if random.random() <= self.probability:
-                impression = self.confusion(impression)
-        if FP:
-            if random.random() <= self.probability:
-                impression = self.positive(impression)
-        if FN:
-            if random.random() <= self.probability:
-                impression = self.negative(impression)
-        if L:
-            if random.random() <= self.probability:
-                impression = self.location(impression)
-        if E:
-            if random.random() <= self.probability:
-                impression = self.extent(impression)
-        if M:
-            if random.random() <= self.probability:
-                impression = self.mismatch(impression)
+                if FP:
+                    impression = self.positive(impression)
+                elif FN:
+                    impression = self.negative(impression)
+                elif L:
+                    impression = self.location(impression)
+                elif E:
+                    impression = self.extent(impression)
+                elif M:
+                    impression = self.mismatch(impression)
+            else:
+                pass
 
         return impression
 

@@ -1,13 +1,17 @@
 train_file: ['/COVID_8TB/sangjoon/mimic_CXR/cxr.h5', '/COVID_8TB/sangjoon/mimic_CXR/mimic_impressions_final.csv']
 
 image_res: 224
-batch_size_train: 32
+batch_size_train: 16
 batch_size_test: 1
 k_test: 10
 max_words_length: 120
 
-eos_token: 3
+beam_size: 4
+min_length: 2
+max_length: 120
+
 bos_token: 2
+eos_token: 3
 
 alpha: 0.4
 distill: False

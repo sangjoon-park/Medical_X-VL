@@ -11,7 +11,6 @@ from health_multimodal.text.utils import get_cxr_bert
 from health_multimodal.image.model.model import get_biovil_resnet
 from health_multimodal.image.data.transforms import create_chest_xray_transform_for_inference, create_chest_xray_transform_for_train
 from health_multimodal.text.inference_engine import TextInferenceEngine
-import clip
 
 def load_clip(model_path=None, context_length=77):
     '''

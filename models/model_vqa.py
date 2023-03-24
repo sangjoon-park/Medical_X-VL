@@ -10,6 +10,7 @@ from health_multimodal.text.inference_engine import TextInferenceEngine
 import torch
 from torch import nn
 import torch.nn.functional as F
+from models.predictor import TextGenerator
 
 import numpy as np
 
@@ -37,6 +38,10 @@ class XVLModel(nn.Module):
         config_decoder.fusion_layer = 0
         config_decoder.num_hidden_layers = 4
         self.fusion_decoder = BertLMHeadModel(config=config_decoder)
+
+        self.beam_generator = TextGenerator(config, self.fusion_decoder,
+                                            bos_token=config['bos_token'],
+                                            eos_token=config['eos_token'])
 
         if self.distill:
             self.visual_encoder_m = vit_base(
@@ -150,26 +155,9 @@ class XVLModel(nn.Module):
             fused_states = fused_output.last_hidden_state
             fused_atts = stt_text.attention_mask
 
-            bos_token = answer
-            seq = torch.cuda.LongTensor([bos_token]).repeat(fused_states.size(0), 1).to(image.device)  # bos token
-            for i in range(self.config['max_words_length']):
-                next_token = self.pred_next(fused_states, fused_atts, seq)
-                seq = torch.cat([seq, next_token.unsqueeze(0)], dim=1)
-                if next_token[0] == int(self.config['eos_token']):
-                    break
-            return seq
+            topk_ids, topk_probs = self.generation(fused_states, fused_atts)
 
-    def pred_next(self, fused_states, fused_atts, seq_ids):
-        output = self.fusion_decoder(seq_ids,
-                                  encoder_hidden_states=fused_states,
-                                  encoder_attention_mask=fused_atts,
-                                  return_dict=True,
-                                  reduction='none',
-                                  )
-        logits          = output.logits[:, -1, :]  # first token's logit
-        prob_next_token = F.softmax(logits, dim=1)
-        pred_next_token = torch.argmax(prob_next_token, dim=1)
-        return pred_next_token
+            return topk_ids, topk_probs
 
     @torch.no_grad()
     def copy_params(self):
@@ -183,3 +171,92 @@ class XVLModel(nn.Module):
         for model_pair in self.model_pairs:
             for param, param_m in zip(model_pair[0].parameters(), model_pair[1].parameters()):
                 param_m.data = param_m.data * self.momentum + param.data * (1. - self.momentum)
+
+    def generation(self, question_states, question_atts, out_size=1):
+        encoder_inputs = [question_states, question_atts]
+        # topk_ids, topk_probs = self.beam_generator.translate_batch_scst(encoder_inputs, out_size=out_size)
+        topk_ids, topk_probs = self.beam_generator.translate_batch(encoder_inputs, out_size=out_size)
+        return topk_ids, topk_probs
+
+    def rank_answer(self, question_states, question_atts, answer_ids, answer_atts, k):
+
+        num_ques = question_states.size(0)
+        start_ids = answer_ids[0, 0].repeat(num_ques, 1)  # bos token
+
+        start_output = self.text_decoder(start_ids,
+                                         encoder_hidden_states=question_states,
+                                         encoder_attention_mask=question_atts,
+                                         return_dict=True,
+                                         reduction='none')
+        logits = start_output.logits[:, 0, :]  # first token's logit
+
+        # topk_probs: top-k probability
+        # topk_ids: [num_question, k]
+        answer_first_token = answer_ids[:, 1]
+        prob_first_token = F.softmax(logits, dim=1).index_select(dim=1, index=answer_first_token)
+        topk_probs, topk_ids = prob_first_token.topk(k, dim=1)
+
+        # answer input: [num_question*k, answer_len]
+        input_ids = []
+        input_atts = []
+        for b, topk_id in enumerate(topk_ids):
+            input_ids.append(answer_ids.index_select(dim=0, index=topk_id))
+            input_atts.append(answer_atts.index_select(dim=0, index=topk_id))
+        input_ids = torch.cat(input_ids, dim=0)
+        input_atts = torch.cat(input_atts, dim=0)
+
+        targets_ids = input_ids.masked_fill(input_ids == self.tokenizer.pad_token_id, -100)
+
+        # repeat encoder's output for top-k answers
+        question_states = tile(question_states, 0, k)
+        question_atts = tile(question_atts, 0, k)
+
+        output = self.text_decoder(input_ids,
+                                   attention_mask=input_atts,
+                                   encoder_hidden_states=question_states,
+                                   encoder_attention_mask=question_atts,
+                                   labels=targets_ids,
+                                   return_dict=True,
+                                   reduction='none')
+
+        answer_loss = output.loss
+        answer_loss = answer_loss.view(input_ids.size(0), -1)
+
+        # topk_prob: first token probability
+        topk_probs = topk_probs.view(-1, 1)
+        log_probs = torch.cat([topk_probs.log(), -answer_loss], dim=1)
+
+        # re-calculate log probabilities for the answer sequences using chain rule
+        log_probs_sum = log_probs.sum(1)
+        log_probs_sum = log_probs_sum.view(num_ques, k)
+
+        topk_probs = F.softmax(log_probs_sum, dim=-1)
+        # get top-k after re-ranking
+        topk_probs, rerank_id = topk_probs.topk(k, dim=1)
+        topk_ids = torch.gather(topk_ids, 1, rerank_id)
+
+        return topk_ids, topk_probs
+
+    def interpolate_pos_encoding(self, ds_embed, x):
+        npatch = x.shape[1]
+        N = ds_embed.shape[1]
+        patch_pos_embed = ds_embed[:, :]
+
+        bs, ds, p, dim = patch_pos_embed.size()
+        patch_pos_embed = patch_pos_embed.permute(0, 2, 3, 1).view(-1, dim, ds)
+        patch_pos_embed = nn.functional.interpolate(patch_pos_embed, scale_factor=npatch/N, mode='linear')
+        patch_pos_embed = patch_pos_embed.view(bs, p, dim, -1).permute(0, 3, 1, 2)
+
+        return patch_pos_embed
+
+
+def tile(x, dim, n_tile):
+    init_dim = x.size(dim)
+    repeat_idx = [1] * x.dim()
+    repeat_idx[dim] = n_tile
+    x = x.repeat(*(repeat_idx))
+    order_index = torch.LongTensor(np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)]))
+    return torch.index_select(x, dim, order_index.to(x.device))
+
+
+

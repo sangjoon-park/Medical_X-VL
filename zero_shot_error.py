@@ -53,7 +53,7 @@ report_filepath: str = './data/openi/Test_selected.jsonl'
 
 cxr_true_labels_path: Optional[
     str] = '/home/depecher/PycharmProjects/CheXzero/data/groundtruth.csv'  # (optional for evaluation) if labels are provided, provide path
-model_dir: str = '/COVID_8TB/sangjoon/chexzero_checkpoint/20230316_teacher_alpha0.3_simple_no_sentencewise/best_5/'  # where pretrained models are saved (.pt)
+model_dir: str = '/COVID_8TB/sangjoon/chexzero_checkpoint/20230320_exclude_testset_fuzz_42_sentencewise/best_5/'  # where pretrained models are saved (.pt)
 predictions_dir: Path = Path('/home/depecher/PycharmProjects/CheXzero/predictions')  # where to save predictions
 cache_dir: str = predictions_dir / "cached"  # where to cache ensembled predictions
 

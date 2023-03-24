@@ -29,6 +29,9 @@ from scheduler import create_scheduler
 from optim import create_optimizer
 from transformers import AutoTokenizer
 from funcs import post_process
+from dataset.utils import pre_caption
+import language_evaluation
+from eval_function import COCOEvalCapDirect
 
 
 def train(model, data_loader, optimizer, epoch, warmup_steps, device, scheduler, config):
@@ -80,17 +83,48 @@ def evaluation(model, data_loader, device, config):
     print_freq = 50
 
     result = []
+    gen_result = {}
+
     bos_token = config['bos_token']
     for n, (image, error_text, answer, label) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         image = image.to(device, non_blocking=True)
+
+        caption = []
+        for txt in answer:
+            caption.append(pre_caption(txt, max_words=120))
+
+        gold_caption = caption
+
         stt_text_input = model.module.tokenizer.batch_encode_plus(batch_text_or_text_pairs=error_text,
                                                     add_special_tokens=True,
                                                     padding='longest',
                                                     return_tensors='pt').to(device)
-        candidates = model(image, stt_text_input, bos_token, train=False)
-        corrected_text = model.module.tokenizer.decode(candidates[0])
-        result.append({"error": error_text, "corrected": corrected_text, "label": answer})
-    return result
+
+        topk_ids, topk_probs = model(image, stt_text_input, bos_token, train=False)
+
+        for topk_id, topk_prob, gold_caption_list in zip(topk_ids, topk_probs, gold_caption):
+            ans = model.module.tokenizer.decode(topk_id[0]).replace("[SEP]", "").replace("[CLS]", "").replace("[PAD]", "").strip()
+            gen_result[n] = {"pred" :ans, "label" :gold_caption_list}
+
+            if n % 100 == 0:
+                print("pred : {} / label: {}".format(ans, gold_caption_list))
+
+        result.append({"error": error_text, "corrected": ans, "label": answer})
+    return result, gen_result
+
+
+def cal_metric(result_file):
+    result_list = json.load(open(result_file, "r"))
+    predicts = []
+    answers = []
+    for each in result_list:
+        predicts.append(each["corrected"])
+        answers.append(each["label"])
+    evaluator = language_evaluation.CocoEvaluator(verbose=False)
+    results = evaluator.run_evaluation(predicts, answers)
+    print(len(result_list), results)
+    return results
+
 
 
 def main(args, config):
@@ -215,9 +249,16 @@ def main(args, config):
     print("Start training")
     start_time = time.time()
 
-    with torch.no_grad():
-        corrected_results = evaluation(model, test_loader, device, config)
-        result_file = save_result(corrected_results, args.result_dir, 'Test_corrected_result')
+    # with torch.no_grad():
+    #     corrected_results, gen_results = evaluation(model, test_loader, device, config)
+    #     result_file = save_result(corrected_results, args.result_dir, 'Test_corrected_result')
+    #
+    # # Eval metrics
+    # cocoEval = COCOEvalCapDirect(gen_results)
+    # cocoEval.evaluate()
+    #
+    # for metric, score in cocoEval.eval.items():
+    #     print('%s: %.3f' % (metric, score))
 
     # if args.evaluate:
     #     with torch.no_grad():
@@ -249,8 +290,16 @@ def main(args, config):
                         }
             torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint.pth'))
 
-        corrected_results = evaluation(model, test_loader, device, config)
-        result_file = save_result(corrected_results, args.result_dir, 'Valid_corrected_result_epoch%d' % epoch)
+        with torch.no_grad():
+            corrected_results, gen_results = evaluation(model, test_loader, device, config)
+            result_file = save_result(corrected_results, args.result_dir, 'Valid_corrected_result_epoch%d' % epoch)
+
+            # Eval metrics
+            cocoEval = COCOEvalCapDirect(gen_results)
+            cocoEval.evaluate()
+
+            for metric, score in cocoEval.eval.items():
+                print('%s: %.3f' % (metric, score))
 
         dist.barrier()
 

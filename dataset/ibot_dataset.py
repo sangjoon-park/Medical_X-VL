@@ -736,7 +736,7 @@ class CXRTrainDataset(Dataset):
         entire_texts = pd.read_csv(corpus_dir)
         entire_labels = pd.read_csv(label_dir)
 
-        self.error_generator = ErrorGenerator(entire_texts, entire_labels, entire_pair, probability=0.05)
+        self.error_generator = ErrorGenerator(entire_texts, entire_labels, entire_pair, probability=0.5)
 
         self.img_dset = h5py.File(ann_file[0], 'r')['cxr']
         self.df = pd.read_csv(ann_file[1])
@@ -826,7 +826,7 @@ class CXRTrainDataset(Dataset):
         impression = self.df.iloc[index].impression
         impression = pre_caption(impression, self.max_words)
 
-        error_imp = self.error_generator(impression, O=True, C=True, FP=True, FN=True, L=True, E=True, M=True)
+        error_imp = self.error_generator(impression, FP=True, FN=True, L=True, E=True, M=True)
         error_imp = pre_caption(error_imp)
 
         if impression != error_imp:
@@ -867,7 +867,7 @@ class CXRTestDataset(Dataset):
         entire_texts = pd.read_csv(corpus_dir)
         entire_labels = pd.read_csv(label_dir)
 
-        self.error_generator = ErrorGenerator(entire_texts, entire_labels, entire_pair, probability=0.05)
+        self.error_generator = ErrorGenerator(entire_texts, entire_labels, entire_pair, probability=0.25)
 
         self.img_dset = h5py.File(ann_file[0], 'r')['cxr']
         self.df = pd.read_csv(ann_file[1])
@@ -880,10 +880,10 @@ class CXRTestDataset(Dataset):
             impression = self.df.iloc[i].impression
             views = self.df.iloc[i].views
             # if split == mode and findings != 'NONE' and impression != 'NONE' and type(findings) != float and type(impression) != float:
-            if split == 'test':
+            # if split == 'test':
             #     # if views == 'AP' or views == 'PA':
-                if (impression != 'NONE' and type(impression) != float and len(shuffle(pre_caption(impression, 120))) > 1):
-                    self.index_mapping.append(i)
+            if (impression != 'NONE' and type(impression) != float and len(shuffle(pre_caption(impression, 120))) > 1):
+                self.index_mapping.append(i)
 
         if len(self.img_dset) != len(self.df):
             raise AssertionError()
@@ -957,7 +957,7 @@ class CXRTestDataset(Dataset):
         impression = self.df.iloc[index].impression
         impression = pre_caption(impression, self.max_words)
 
-        error_imp = self.error_generator(impression, O=True, C=True, FP=True, FN=True, L=True, E=True, M=True)
+        error_imp = self.error_generator(impression, FP=True, FN=True, L=True, E=True, M=True)
         error_imp = pre_caption(error_imp)
 
         if impression != error_imp:

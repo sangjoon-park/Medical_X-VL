@@ -10,11 +10,11 @@ import sys
 sys.path.append('../../')
 
 from eval_zero import evaluate, bootstrap
-from zero_shot import make, make_true_labels, run_softmax_eval
+from zero_shot_covid import make, run_softmax_eval
 
 
 # ----- DIRECTORIES ------ #
-cxr_filepath: str = '/home/depecher/PycharmProjects/CheXzero/data/chexpert_test.h5'  # filepath of chest x-ray images (.h5)
+cxr_filepath: str = '/8TB_hdd/covidx/test.csv'  # filepath of chest x-ray images (.h5)
 cxr_true_labels_path: Optional[
     str] = '/home/depecher/PycharmProjects/CheXzero/data/groundtruth.csv'  # (optional for evaluation) if labels are provided, provide path
 model_dir: str = '/COVID_8TB/sangjoon/chexzero_checkpoint/20230320_exclude_testset_fuzz_42_sentencewise/best_5/'  # where pretrained models are saved (.pt)
@@ -30,7 +30,7 @@ context_length: int = 120
 #                          'Lung Opacity', 'No Finding', 'Pleural Effusion', 'Pleural Other', 'Pneumonia',
 #                          'Pneumothorax', 'Support Devices']
 
-cxr_labels: List[str] = ['Atelectasis', 'Cardiomegaly', 'Edema', 'Consolidation', 'Fracture', 'Pleural Effusion', 'Pneumonia', 'Pneumothorax']
+cxr_labels: List[str] = ['covid']
 
 # ---- TEMPLATES ----- #
 # Define set of templates | see Figure 1 for more details
@@ -96,9 +96,9 @@ def ensemble_models(
         #     y_pred = np.load(cache_path)
         # else:  # cached prediction not found, compute preds
         print("Inferring model {}".format(path))
-        test_true = make_true_labels(cxr_true_labels_path=cxr_true_labels_path, cxr_labels=cxr_labels)
+        # test_true = make_true_labels(cxr_true_labels_path=cxr_true_labels_path, cxr_labels=cxr_labels)
 
-        y_pred = run_softmax_eval(model, test_true, loader, cxr_labels, cxr_pair_template)
+        y_pred, test_true = run_softmax_eval(model, loader, cxr_labels, cxr_pair_template)
         if cache_dir is not None:
             Path(cache_dir).mkdir(exist_ok=True, parents=True)
             np.save(file=cache_path, arr=y_pred)
@@ -107,11 +107,11 @@ def ensemble_models(
     # compute average predictions
     y_pred_avg = np.mean(predictions, axis=0)
 
-    return predictions, y_pred_avg
+    return predictions, y_pred_avg, test_true
 
 
 # %%
-predictions, y_pred_avg = ensemble_models(
+predictions, y_pred_avg, test_true = ensemble_models(
     model_paths=model_paths,
     cxr_filepath=cxr_filepath,
     cxr_labels=cxr_labels,
@@ -124,23 +124,22 @@ pred_name = "chexpert_preds.npy"  # add name of preds
 predictions_dir = predictions_dir / pred_name
 np.save(file=predictions_dir, arr=y_pred_avg)
 
-cxr_labels: List[str] = ['Atelectasis', 'Cardiomegaly', 'Edema', 'Consolidation', 'Fracture', 'Pleural Effusion', 'Pneumonia', 'Pneumothorax']
+cxr_labels: List[str] = ['covid']
 
 # make test_true
 test_pred = y_pred_avg
-test_true = make_true_labels(cxr_true_labels_path=cxr_true_labels_path, cxr_labels=cxr_labels)
+# test_true = make_true_labels(cxr_true_labels_path=cxr_true_labels_path, cxr_labels=cxr_labels)
 
 # evaluate model
 cxr_results = evaluate(test_pred, test_true, cxr_labels)
-Atelectasis_auc = cxr_results['Atelectasis_auc']
-Cardiomegaly_auc = cxr_results['Cardiomegaly_auc']
-Consolidation_auc = cxr_results['Consolidation_auc']
-Edema_auc = cxr_results['Edema_auc']
-Effusion_auc = cxr_results['Pleural Effusion_auc']
-Fracture_auc = cxr_results['Fracture_auc']
-Pneumonia_auc = cxr_results['Pneumonia_auc']
-Pneumothorax_auc = cxr_results['Pneumothorax_auc']
-Mean_auc = (Atelectasis_auc + Cardiomegaly_auc + Consolidation_auc + Edema_auc + Effusion_auc + Fracture_auc + Pneumonia_auc + Pneumothorax_auc) / 8.
+covid = cxr_results['covid_auc']
+# Cardiomegaly_auc = cxr_results['Cardiomegaly_auc']
+# Consolidation_auc = cxr_results['Consolidation_auc']
+# Edema_auc = cxr_results['Edema_auc']
+# Effusion_auc = cxr_results['Pleural Effusion_auc']
+# Fracture_auc = cxr_results['Fracture_auc']
+# Pneumonia_auc = cxr_results['Pneumonia_auc']
+# Pneumothorax_auc = cxr_results['Pneumothorax_auc']
 
 # boostrap evaluations for 95% confidence intervals
 bootstrap_results = bootstrap(test_pred, test_true, cxr_labels)
