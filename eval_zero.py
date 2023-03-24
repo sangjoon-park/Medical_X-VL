@@ -29,7 +29,7 @@ sys.path.append('../..')
 
 
 def compute_mean(stats, is_df=True):
-    spec_labels = ['Atelectasis', 'Cardiomegaly', 'Edema', 'Fracture', 'Pleural Effusion', 'Pneumonia', 'Pneumothorax']
+    spec_labels = ["Atelectasis", "Cardiomegaly", "Consolidation", "Edema", "Pleural Effusion"]
     if is_df:
         spec_df = stats[spec_labels]
         res = np.mean(spec_df.iloc[0])
@@ -91,6 +91,17 @@ def choose_operating_point(fpr, tpr, thresholds):
             spec = 1 - _fpr
             J = _tpr - _fpr
     return sens, spec
+
+
+def choose_operating_point_f1(p, r, thresholds):
+    J = 0
+    best_f1 = 0
+    for _p, _r in zip(p, r):
+        f1 = (2 * _p * _r) / (_p + _r)
+        if f1 > J:
+            best_f1 = f1
+            J = f1
+    return best_f1
 
 
 ''' PRECISION-RECALL CURVE '''
@@ -158,13 +169,15 @@ def evaluate(y_pred, y_true, cxr_labels,
 
         sens, spec = choose_operating_point(fpr, tpr, thresholds)
 
-        results = [[roc_auc]]
-        df = pd.DataFrame(results, columns=[cxr_label + '_auc'])
-        dataframes.append(df)
-
         ''' PRECISION-RECALL CURVE '''
         pr_name = cxr_label + ' Precision-Recall Curve'
         precision, recall, thresholds = plot_pr(y_pred_i, y_true_i, pr_name)
+
+        f1 = choose_operating_point_f1(precision, recall, thresholds)
+
+        results = [[roc_auc, f1]]
+        df = pd.DataFrame(results, columns=[cxr_label + '_auc', cxr_label + '_f1'])
+        dataframes.append(df)
 
     dfs = pd.concat(dataframes, axis=1)
     return dfs
