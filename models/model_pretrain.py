@@ -170,44 +170,44 @@ class XVLModel(nn.Module):
                                                      return_dict=True)
             text_feat_m = F.normalize(self.text_proj_m(text_output_m.last_hidden_state[:, 0, :]), dim=-1)
 
-            # # jinyu: local features of text part
-            # # text_feat_m_l = F.normalize(self.text_proj_m(text_output_m.last_hidden_state[:, 1:, :]), dim=-1)
-            # text_feat_m_l = []
-            # text_attention_mask_l_all = []
-            #
-            # lengths = []
-            # for k in range(bs):
-            #     lengths.append(len(split(caption[k])))
-            # max_len = np.array(lengths).max()
-            #
-            # for j in range(bs):
-            #     text_feat_m_l_ = []
-            #     sentences = split(caption[j])
-            #     sent_len = len(sentences)
-            #     for i in range(sent_len):
-            #         sentence = [sentences[i]]
-            #         sentence = self.tokenizer.batch_encode_plus(batch_text_or_text_pairs=sentence,
-            #                                                 add_special_tokens=True,
-            #                                                 padding='longest',
-            #                                                 return_tensors='pt').to(image.device)
-            #         text_input_l, text_attention_mask_l = sentence.input_ids, sentence.attention_mask
-            #         text_output_l = self.text_encoder_m(text_input_l, attention_mask=text_attention_mask_l,
-            #                                                  return_dict=True)
-            #         text_feat_l = F.normalize(self.text_proj_m(text_output_l.last_hidden_state[:, 0, :]), dim=-1)
-            #         text_feat_l = text_feat_l.view(1, 1, text_feat_l.size(1))
-            #         text_feat_m_l_.append(text_feat_l)
-            #     text_feat_m_l_ = torch.cat(text_feat_m_l_, dim=1)
-            #     if sent_len < max_len:
-            #         text_feat_m_l_pad = torch.zeros(text_feat_m_l_.size(0), max_len - sent_len, text_feat_m_l_.size(2))
-            #         text_feat_m_l_all = torch.cat([text_feat_m_l_, text_feat_m_l_pad.to(image.device)], dim=1)
-            #     else:
-            #         text_feat_m_l_all = text_feat_m_l_
-            #     text_attention_mask = torch.zeros(max_len).to(image.device)
-            #     text_attention_mask[:sent_len] = 1
-            #     text_feat_m_l.append(text_feat_m_l_all)
-            #     text_attention_mask_l_all.append(text_attention_mask)
-            # text_feat_m_l = torch.cat(text_feat_m_l, dim=0)
-            # text_attention_mask_l_all = torch.stack(text_attention_mask_l_all, dim=0)
+            # jinyu: local features of text part
+            # text_feat_m_l = F.normalize(self.text_proj_m(text_output_m.last_hidden_state[:, 1:, :]), dim=-1)
+            text_feat_m_l = []
+            text_attention_mask_l_all = []
+
+            lengths = []
+            for k in range(bs):
+                lengths.append(len(split(caption[k])))
+            max_len = np.array(lengths).max()
+
+            for j in range(bs):
+                text_feat_m_l_ = []
+                sentences = split(caption[j])
+                sent_len = len(sentences)
+                for i in range(sent_len):
+                    sentence = [sentences[i]]
+                    sentence = self.tokenizer.batch_encode_plus(batch_text_or_text_pairs=sentence,
+                                                            add_special_tokens=True,
+                                                            padding='longest',
+                                                            return_tensors='pt').to(image.device)
+                    text_input_l, text_attention_mask_l = sentence.input_ids, sentence.attention_mask
+                    text_output_l = self.text_encoder_m(text_input_l, attention_mask=text_attention_mask_l,
+                                                             return_dict=True)
+                    text_feat_l = F.normalize(self.text_proj_m(text_output_l.last_hidden_state[:, 0, :]), dim=-1)
+                    text_feat_l = text_feat_l.view(1, 1, text_feat_l.size(1))
+                    text_feat_m_l_.append(text_feat_l)
+                text_feat_m_l_ = torch.cat(text_feat_m_l_, dim=1)
+                if sent_len < max_len:
+                    text_feat_m_l_pad = torch.zeros(text_feat_m_l_.size(0), max_len - sent_len, text_feat_m_l_.size(2))
+                    text_feat_m_l_all = torch.cat([text_feat_m_l_, text_feat_m_l_pad.to(image.device)], dim=1)
+                else:
+                    text_feat_m_l_all = text_feat_m_l_
+                text_attention_mask = torch.zeros(max_len).to(image.device)
+                text_attention_mask[:sent_len] = 1
+                text_feat_m_l.append(text_feat_m_l_all)
+                text_attention_mask_l_all.append(text_attention_mask)
+            text_feat_m_l = torch.cat(text_feat_m_l, dim=0)
+            text_attention_mask_l_all = torch.stack(text_attention_mask_l_all, dim=0)
 
             text_feat_all = torch.cat([text_feat_m.t(), self.text_queue.clone().detach()], dim=1)
 
@@ -220,7 +220,7 @@ class XVLModel(nn.Module):
             sim_i2t_targets = alpha * F.softmax(sim_i2t_m, dim=1) + (1 - alpha) * sim_targets
             sim_t2i_targets = alpha * F.softmax(sim_t2i_m, dim=1) + (1 - alpha) * sim_targets
 
-        # loss_t2i_inMod_l = self.in_batch_g2l_loss(text_feat_m_l, image_feat, self.temp, text_attention_mask_l_all)
+        loss_t2i_inMod_l = self.in_batch_g2l_loss(text_feat_m_l, image_feat, self.temp, text_attention_mask_l_all)
 
         sim_i2t = image_feat @ text_feat_all / self.temp
         sim_t2i = text_feat @ image_feat_all / self.temp
@@ -235,7 +235,7 @@ class XVLModel(nn.Module):
         loss_i2i = -torch.sum(F.log_softmax(sim_i2i, dim=1) * sim_targets, dim=1).mean()
         loss_t2t = -torch.sum(F.log_softmax(sim_t2t, dim=1) * sim_targets, dim=1).mean()
 
-        loss_ita = (loss_i2t + loss_t2i + loss_i2i + loss_t2t) / 4.
+        loss_ita = (loss_i2t + loss_t2i + loss_i2i + loss_t2t + loss_t2i_inMod_l) / 5.
 
         self._dequeue_and_enqueue(image_feat_m, text_feat_m)
 
