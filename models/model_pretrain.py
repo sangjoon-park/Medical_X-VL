@@ -168,6 +168,7 @@ class XVLModel(nn.Module):
 
             text_output_m = self.text_encoder_m(text.input_ids, attention_mask=text.attention_mask,
                                                      return_dict=True)
+            text_sim_m = text_output_m.last_hidden_state[:, 0, :]
             text_feat_m = F.normalize(self.text_proj_m(text_output_m.last_hidden_state[:, 0, :]), dim=-1)
 
             # jinyu: local features of text part
@@ -269,10 +270,12 @@ class XVLModel(nn.Module):
                         neg_idx = torch.randint(0, bs, (1,)).item()
 
                 n += 1
-                this = caption[b]
-                cand = caption[neg_idx]
+                this = text_sim_m[b]
+                cand = text_sim_m[neg_idx]
 
-                if fuzz.token_sort_ratio(this, cand) < 80:
+                cosine_sim = F.cosine_similarity(this, cand, dim=0)
+
+                if cosine_sim < 0.95:
                     break
                 if n > 100:
                     break
@@ -295,10 +298,12 @@ class XVLModel(nn.Module):
                         neg_idx = torch.randint(0, bs, (1,)).item()
 
                 n += 1
-                this = caption[b]
-                cand = caption[neg_idx]
+                this = text_sim_m[b]
+                cand = text_sim_m[neg_idx]
 
-                if fuzz.token_sort_ratio(this, cand) < 80:
+                cosine_sim = F.cosine_similarity(this, cand, dim=0)
+
+                if cosine_sim < 0.95:
                     break
                 if n > 100:
                     break

@@ -17,7 +17,7 @@ from zero_shot import make, make_true_labels, run_softmax_eval
 cxr_filepath: str = '/home/depecher/PycharmProjects/CheXzero/data/chexpert_test.h5'  # filepath of chest x-ray images (.h5)
 cxr_true_labels_path: Optional[
     str] = '/home/depecher/PycharmProjects/CheXzero/data/groundtruth.csv'  # (optional for evaluation) if labels are provided, provide path
-model_dir: str = '/COVID_8TB/sangjoon/chexzero_checkpoint/20230320_exclude_testset_fuzz_42_sentencewise/best_5/'  # where pretrained models are saved (.pt)
+model_dir: str = '/COVID_8TB/sangjoon/chexzero_checkpoint/20230402_proposed/best_4/'  # where pretrained models are saved (.pt)
 predictions_dir: Path = Path('/home/depecher/PycharmProjects/CheXzero/predictions')  # where to save predictions
 cache_dir: str = predictions_dir / "cached"  # where to cache ensembled predictions
 
@@ -141,6 +141,7 @@ Fracture_auc = cxr_results['Fracture_auc']
 Pneumonia_auc = cxr_results['Pneumonia_auc']
 Pneumothorax_auc = cxr_results['Pneumothorax_auc']
 Mean_auc = (Atelectasis_auc + Cardiomegaly_auc + Consolidation_auc + Edema_auc + Effusion_auc + Fracture_auc + Pneumonia_auc + Pneumothorax_auc) / 8.
+Mean_7_auc = (Atelectasis_auc + Cardiomegaly_auc + Consolidation_auc + Edema_auc + Effusion_auc + Pneumonia_auc + Pneumothorax_auc) / 7.
 
 # boostrap evaluations for 95% confidence intervals
 bootstrap_results = bootstrap(test_pred, test_true, cxr_labels)

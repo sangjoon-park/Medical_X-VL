@@ -148,20 +148,52 @@ def evaluate(y_pred, y_true, cxr_labels,
     num_classes = y_pred.shape[-1]  # number of total labels
 
     dataframes = []
-    for i in range(num_classes):
+
+    if len(y_pred.shape) > 1:
+        for i in range(num_classes):
+            #         print('{}.'.format(cxr_labels[i]))
+
+            if label_idx_map is None:
+                y_pred_i = y_pred[:, i]  # (num_samples,)
+                y_true_i = y_true[:, i]  # (num_samples,)
+
+            else:
+                y_pred_i = y_pred[:, i]  # (num_samples,)
+
+                true_index = label_idx_map[cxr_labels[i]]
+                y_true_i = y_true[:, true_index]  # (num_samples,)
+
+            cxr_label = cxr_labels[i]
+
+            ''' ROC CURVE '''
+            roc_name = cxr_label + ' ROC Curve'
+            fpr, tpr, thresholds, roc_auc = plot_roc(y_pred_i, y_true_i, roc_name)
+
+            sens, spec = choose_operating_point(fpr, tpr, thresholds)
+
+            ''' PRECISION-RECALL CURVE '''
+            pr_name = cxr_label + ' Precision-Recall Curve'
+            precision, recall, thresholds = plot_pr(y_pred_i, y_true_i, pr_name)
+
+            f1 = choose_operating_point_f1(precision, recall, thresholds)
+
+            results = [[roc_auc, f1]]
+            df = pd.DataFrame(results, columns=[cxr_label + '_auc', cxr_label + '_f1'])
+            dataframes.append(df)
+    else:
         #         print('{}.'.format(cxr_labels[i]))
 
         if label_idx_map is None:
-            y_pred_i = y_pred[:, i]  # (num_samples,)
-            y_true_i = y_true[:, i]  # (num_samples,)
+            y_pred_i = y_pred[:]  # (num_samples,)
+            y_true_i = y_true[:]  # (num_samples,)
 
         else:
-            y_pred_i = y_pred[:, i]  # (num_samples,)
+            y_pred_i = y_pred[:]  # (num_samples,)
 
-            true_index = label_idx_map[cxr_labels[i]]
+            true_index = label_idx_map[cxr_labels[0]]
             y_true_i = y_true[:, true_index]  # (num_samples,)
 
-        cxr_label = cxr_labels[i]
+        cxr_label = cxr_labels[0]
 
         ''' ROC CURVE '''
         roc_name = cxr_label + ' ROC Curve'

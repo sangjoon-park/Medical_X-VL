@@ -74,12 +74,12 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
         if fp16_scaler is None:
             loss_mlm, loss_ita, loss_itm = model(image, image_aug, impression, epoch, alpha=alpha)
 
-            loss = loss_mlm + loss_ita + loss_itm
+            loss = loss_mlm + loss_ita + 2 * loss_itm
         else:
             with torch.cuda.amp.autocast():
                 loss_mlm, loss_ita, loss_itm = model(image, image_aug, impression, epoch, alpha = alpha)
 
-                loss = loss_mlm + loss_ita + loss_itm
+                loss = loss_mlm + loss_ita + 2 * loss_itm
 
         if fp16_scaler is None:
             loss.backward()

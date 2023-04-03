@@ -227,89 +227,89 @@ def predict(loader, model, labels, positive, class_names, template, softmax_eval
 
                 if 'Atelectasis' in text:
                     if positive:
-                        texts.append(pre_caption('Atelectasis.'))
-                        # texts.append(pre_caption('Platelike opacity likely represents atelectasis.'))
-                        # texts.append(pre_caption('Geometric opacity likely represents atelectasis.'))
-                        # texts.append(pre_caption('Atelectasis is present.'))
-                        # texts.append(pre_caption('Basilar opacity and volume loss is likely due to atelectasis.'))
-                        # texts.append(pre_caption('Patchy atelectasis is seen.'))
+                        # texts.append(pre_caption('Atelectasis.'))
+                        texts.append(pre_caption('Platelike opacity likely represents atelectasis.'))
+                        texts.append(pre_caption('Geometric opacity likely represents atelectasis.'))
+                        texts.append(pre_caption('Atelectasis is present.'))
+                        texts.append(pre_caption('Basilar opacity and volume loss is likely due to atelectasis.'))
+                        texts.append(pre_caption('Patchy atelectasis is seen.'))
                     else:
                         texts.append(pre_caption('No atelectasis.'))
 
                 if 'Cardiomegaly' in text:
                     if positive:
-                        texts.append(pre_caption('Cardiomegaly.'))
-                        # texts.append(pre_caption('The heart is mildly enlarged.'))
-                        # texts.append(pre_caption('Cardiomegaly is present.'))
-                        # texts.append(pre_caption('The heart shadow is enlarged.'))
-                        # texts.append(pre_caption('The cardiac silhouette is enlarged.'))
-                        # texts.append(pre_caption('Cardiac enlargement is seen.'))
+                        # texts.append(pre_caption('Cardiomegaly.'))
+                        texts.append(pre_caption('The heart is mildly enlarged.'))
+                        texts.append(pre_caption('Cardiomegaly is present.'))
+                        texts.append(pre_caption('The heart shadow is enlarged.'))
+                        texts.append(pre_caption('The cardiac silhouette is enlarged.'))
+                        texts.append(pre_caption('Cardiac enlargement is seen.'))
                     else:
                         texts.append(pre_caption('No cardiomegaly.'))
 
                 if 'Edema' in text:
                     if positive:
-                        texts.append(pre_caption('Edema.'))
-                        # texts.append(pre_caption('Mild interstitial pulmonary edema is present.'))
-                        # texts.append(pre_caption('The presence of hazy opacity suggests interstitial pulmonary edema.'))
-                        # texts.append(pre_caption('Moderate alveolar edema is present.'))
-                        # texts.append(pre_caption('Mild diffuse opacity likely represents pulmonary edema.'))
-                        # texts.append(pre_caption('Cardiogenic edema likely is present.'))
+                        # texts.append(pre_caption('Edema.'))
+                        texts.append(pre_caption('Mild interstitial pulmonary edema is present.'))
+                        texts.append(pre_caption('The presence of hazy opacity suggests interstitial pulmonary edema.'))
+                        texts.append(pre_caption('Moderate alveolar edema is present.'))
+                        texts.append(pre_caption('Mild diffuse opacity likely represents pulmonary edema.'))
+                        texts.append(pre_caption('Cardiogenic edema likely is present.'))
                     else:
                         texts.append(pre_caption('No edema.'))
 
                 if 'Consolidation' in text:
                     if positive:
-                        texts.append(pre_caption('Consolidation.'))
-                        # texts.append(pre_caption('Focal consolidation is present.'))
-                        # texts.append(pre_caption('Findings suggesting pulmonary consolidation.'))
-                        # texts.append(pre_caption('Opacity of aerated portion of lobe suggests consolidation.'))
-                        # texts.append(pre_caption('Lobar consolidation is present.'))
-                        # texts.append(pre_caption('Fairly homogeneous opacities suggest lobar consolidation'))
+                        # texts.append(pre_caption('Consolidation.'))
+                        texts.append(pre_caption('Focal consolidation is present.'))
+                        texts.append(pre_caption('Findings suggesting pulmonary consolidation.'))
+                        texts.append(pre_caption('Opacity of aerated portion of lobe suggests consolidation.'))
+                        texts.append(pre_caption('Lobar consolidation is present.'))
+                        texts.append(pre_caption('Fairly homogeneous opacities suggest lobar consolidation'))
                     else:
                         texts.append(pre_caption('No consolidation.'))
 
                 if 'Fracture' in text:
                     if positive:
-                        texts.append(pre_caption('Fracture.'))
-                        # texts.append(pre_caption('An angulated fracture is present.'))
-                        # texts.append(pre_caption('An oblique radiolucent line suggests a fracture.'))
-                        # texts.append(pre_caption('A cortical step off indicates the presence of a fracture.'))
-                        # texts.append(pre_caption('A comminuted displaced fracture is present.'))
-                        # texts.append(pre_caption('A fracture is present.'))
+                        # texts.append(pre_caption('Fracture.'))
+                        texts.append(pre_caption('An angulated fracture is present.'))
+                        texts.append(pre_caption('An oblique radiolucent line suggests a fracture.'))
+                        texts.append(pre_caption('A cortical step off indicates the presence of a fracture.'))
+                        texts.append(pre_caption('A comminuted displaced fracture is present.'))
+                        texts.append(pre_caption('A fracture is present.'))
                     else:
                         texts.append(pre_caption('No fracture.'))
 
                 if 'Pleural Effusion' in text:
                     if positive:
-                        texts.append(pre_caption('Pleural effusion.'))
-                        # texts.append(pre_caption('A pleural effusion is present.'))
-                        # texts.append(pre_caption('Blunting of the costophrenic angles represents pleural effusions.'))
-                        # texts.append(pre_caption('Trace pleural fluid is present.'))
-                        # texts.append(pre_caption('The pleural space is partially filled with fluid.'))
-                        # texts.append(pre_caption('Layering pleural effusions are present.'))
+                        # texts.append(pre_caption('Pleural effusion.'))
+                        texts.append(pre_caption('A pleural effusion is present.'))
+                        texts.append(pre_caption('Blunting of the costophrenic angles represents pleural effusions.'))
+                        texts.append(pre_caption('Trace pleural fluid is present.'))
+                        texts.append(pre_caption('The pleural space is partially filled with fluid.'))
+                        texts.append(pre_caption('Layering pleural effusions are present.'))
                     else:
                         texts.append(pre_caption('No pleural effusion.'))
 
                 if 'Pneumonia' in text:
                     if positive:
-                        texts.append(pre_caption('Pneumonia.'))
-                        # texts.append(pre_caption('A consolidation at the base likely represents pneumonia.'))
-                        # texts.append(pre_caption('Pneumonia is present.'))
-                        # texts.append(pre_caption('The presence of air bronchograms suggest pneumonia.'))
-                        # texts.append(pre_caption('A fluffy opacity suggests pneumonia.'))
-                        # texts.append(pre_caption('A pulmonary opacity with ill defined borders likely represents pneumonia.'))
+                        # texts.append(pre_caption('Pneumonia.'))
+                        texts.append(pre_caption('A consolidation at the base likely represents pneumonia.'))
+                        texts.append(pre_caption('Pneumonia is present.'))
+                        texts.append(pre_caption('The presence of air bronchograms suggest pneumonia.'))
+                        texts.append(pre_caption('A fluffy opacity suggests pneumonia.'))
+                        texts.append(pre_caption('A pulmonary opacity with ill defined borders likely represents pneumonia.'))
                     else:
                         texts.append(pre_caption('No pneumonia.'))
 
                 if 'Pneumothorax' in text:
                     if positive:
-                        texts.append(pre_caption('Pneumothorax.'))
-                        # texts.append(pre_caption('An apical pneumothorax is present.'))
-                        # texts.append(pre_caption('A basilar pneumothorax is seen.'))
-                        # texts.append(pre_caption('A medial pneumothorax is present adjacent to the heart.'))
-                        # texts.append(pre_caption('A lateral pleural line suggests pneumothorax.'))
-                        # texts.append(pre_caption('Pleural air is present.'))
+                        # texts.append(pre_caption('Pneumothorax.'))
+                        texts.append(pre_caption('An apical pneumothorax is present.'))
+                        texts.append(pre_caption('A basilar pneumothorax is seen.'))
+                        texts.append(pre_caption('A medial pneumothorax is present adjacent to the heart.'))
+                        texts.append(pre_caption('A lateral pleural line suggests pneumothorax.'))
+                        texts.append(pre_caption('Pleural air is present.'))
                     else:
                         texts.append(pre_caption('No pneumothorax.'))
 

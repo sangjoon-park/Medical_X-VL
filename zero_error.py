@@ -142,7 +142,7 @@ class CXRTestDataset(data.Dataset):
 
         impression = pre_caption(impression, self.max_words)
 
-        error_imp = self.error_generator(impression, id, O=False, C=False, FP=False, FN=False, L=False, E=False, M=True)
+        error_imp = self.error_generator(impression, id, O=False, C=False, FP=False, FN=False, L=False, E=False, M=False)
         error_imp = pre_caption(error_imp)
 
         if impression != error_imp:

@@ -880,10 +880,10 @@ class CXRTestDataset(Dataset):
             impression = self.df.iloc[i].impression
             views = self.df.iloc[i].views
             # if split == mode and findings != 'NONE' and impression != 'NONE' and type(findings) != float and type(impression) != float:
-            # if split == 'test':
+            if split == 'test':
             #     # if views == 'AP' or views == 'PA':
-            if (impression != 'NONE' and type(impression) != float and len(shuffle(pre_caption(impression, 120))) > 1):
-                self.index_mapping.append(i)
+                if (impression != 'NONE' and type(impression) != float and len(shuffle(pre_caption(impression, 120))) > 1):
+                    self.index_mapping.append(i)
 
         if len(self.img_dset) != len(self.df):
             raise AssertionError()

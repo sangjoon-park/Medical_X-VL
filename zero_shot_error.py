@@ -53,7 +53,7 @@ report_filepath: str = './data/openi/Test_selected.jsonl'
 
 cxr_true_labels_path: Optional[
     str] = '/home/depecher/PycharmProjects/CheXzero/data/groundtruth.csv'  # (optional for evaluation) if labels are provided, provide path
-model_dir: str = '/COVID_8TB/sangjoon/chexzero_checkpoint/20230320_exclude_testset_fuzz_42_sentencewise/best_5/'  # where pretrained models are saved (.pt)
+model_dir: str = '/COVID_8TB/sangjoon/chexzero_checkpoint/FINAL_no_sim/best_4/'  # where pretrained models are saved (.pt)
 predictions_dir: Path = Path('/home/depecher/PycharmProjects/CheXzero/predictions')  # where to save predictions
 cache_dir: str = predictions_dir / "cached"  # where to cache ensembled predictions
 
@@ -154,6 +154,7 @@ predictions_dir = predictions_dir / pred_name
 np.save(file=predictions_dir, arr=y_pred_avg)
 
 # cxr_labels: List[str] = ['Atelectasis', 'Cardiomegaly', 'Edema', 'Fracture', 'Pleural Effusion', 'Pneumonia', 'Pneumothorax']
+cxr_labels: List[str] = ['Error']
 
 # make test_true
 test_pred = y_pred_avg
@@ -193,7 +194,7 @@ def bootstrap(y_pred, y_true, n_samples=1000, label_idx_map=None):
         y_pred_sample = y_pred[sample]
         y_true_sample = y_true[sample]
 
-        sample_stats = evaluate(y_pred_sample, y_true_sample)
+        sample_stats = evaluate(y_pred_sample, y_true_sample, cxr_labels)
         boot_stats.append(sample_stats)
 
     boot_stats = pd.concat(boot_stats)  # pandas array of evaluations for each sample
@@ -201,6 +202,8 @@ def bootstrap(y_pred, y_true, n_samples=1000, label_idx_map=None):
 
 # boostrap evaluations for 95% confidence intervals
 bootstrap_results = bootstrap(test_pred, test_true)
+Error_auc = bootstrap_results[1]['Error_auc']
+
 # %%
 # display AUC with confidence intervals
 
