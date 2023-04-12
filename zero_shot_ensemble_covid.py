@@ -17,7 +17,7 @@ from zero_shot_covid import make, run_softmax_eval
 cxr_filepath: str = '/8TB_hdd/covidx/test.csv'  # filepath of chest x-ray images (.h5)
 cxr_true_labels_path: Optional[
     str] = '/home/depecher/PycharmProjects/CheXzero/data/groundtruth.csv'  # (optional for evaluation) if labels are provided, provide path
-model_dir: str = '/COVID_8TB/sangjoon/chexzero_checkpoint/20230320_exclude_testset_fuzz_42_sentencewise/best_5/'  # where pretrained models are saved (.pt)
+model_dir: str = '/COVID_8TB/sangjoon/chexzero_checkpoint/REAL_FINAL/best_5/'  # where pretrained models are saved (.pt)
 predictions_dir: Path = Path('/home/depecher/PycharmProjects/CheXzero/predictions')  # where to save predictions
 cache_dir: str = predictions_dir / "cached"  # where to cache ensembled predictions
 

@@ -222,25 +222,33 @@ def predict(loader, model, positive, class_names, template, softmax_eval=True, v
 
             bs = image.size(0)
 
-            with torch.no_grad():
-                image_feat = model.visual_encoder(image)
-                image_embed = model.vision_proj(image_feat[:, 0, :])
-                image_embed = F.normalize(image_embed, dim=-1)
-
-            image_feats = image_feat
-
             logits = []
             for class_name in class_names:
                 text = template.format(class_name)
 
                 texts = []
 
+                if 'covid' in text:
+                    image = image.repeat(5, 1, 1, 1)
+
+                with torch.no_grad():
+                    image_feat = model.visual_encoder(image)
+                    image_embed = model.vision_proj(image_feat[:, 0, :])
+                    image_embed = F.normalize(image_embed, dim=-1)
+
+                image_feats = image_feat
+
                 if 'no covid' in text:
-                    # texts.append(pre_caption('No evidence of opacity or consolidation.'))
-                    texts.append(pre_caption('No COVID-19.'))
+                    texts.append(pre_caption('No evidence of opacity or consolidation.'))
+                    # texts.append(pre_caption('No COVID-19.'))
                 else:
-                    # texts.append(pre_caption('Bilateral peripheral reticular pattern, ground-glass opacities and consolidations, with rounded morphology and a confluent or patchy multifocal distribution with a predominance in the lower fields is observed.'))
-                    texts.append(pre_caption('COVID-19.'))
+                    texts.append(pre_caption('Bilateral peripheral reticular pattern airspace opacities are observed.'))
+                    texts.append(pre_caption('Ground-glass opacities and consolidations are present.'))
+                    texts.append(
+                        pre_caption('Multi-focal airspace opacities with a predominance in the lower fields are observed.'))
+                    texts.append(pre_caption('Ground-glass opacities with peripheral and lower zone distribution are seen.'))
+                    texts.append(pre_caption('Bilateral patchy consolidations are present.'))
+                    # texts.append(pre_caption('COVID-19.'))
 
                 text_input = model.tokenizer.batch_encode_plus(batch_text_or_text_pairs=texts,
                                                                add_special_tokens=True,

@@ -171,7 +171,7 @@ class CXRTestDataset(torch.utils.data.Dataset):
         impression = self.df.iloc[index].impression
         impression = pre_caption(impression, self.max_words)
 
-        error_imp = self.error_generator(impression, FP=False, FN=False, L=False, E=True, M=False, train=False)
+        error_imp = self.error_generator(impression, FP=False, FN=True, L=False, E=False, M=False, train=False)
         error_imp = pre_caption(error_imp)
 
         if impression != error_imp:
