@@ -5,7 +5,7 @@
 ### Paper link: [https://arxiv.org/abs/2208.05140](https://arxiv.org/abs/2208.05140)
 
 <div align="center">
-  <img src="./assets/teaser.png" width="700">
+  <img src="./assets/teaser.png" width="580">
 </div>
 
 ### [Paper] | [Official Pytorch code](https://github.com/sangjoon-park/)
