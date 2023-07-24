@@ -44,9 +44,6 @@
 The open-source datasets used in paper can be obtained from following links.
 
 #### Dataset preparation
-* We follow the [MedViLL](https://github.com/SuperSupermoon/MedViLL) to preprocess and split the [MIMIC-CXR](https://physionet.org/content/mimic-cxr/2.0.0/) and [VQA-RAD](https://osf.io/89kps/) datasets. See this [link](https://github.com/SuperSupermoon/MedViLL) for details.
-* COVID-19 and normal data can be downloaded in [Brixia](https://brixia.github.io/) and [NIH](https://cloud.google.com/healthcare-api/docs/resources/public-datasets/nih-chest) databases.
-
 * The MIMIC-CXR database is available at [MIMIC](https://physionet.org/content/mimic-cxr/2.0.0/).
 * Subset of the CheXpert test data and corresponding labels used for the evaluation of the model in zero-shot abnormality detection can be found at [CheXpert](https://github.com/rajpurkarlab/cheXpert-test-set-labels). 
 * COVIDx dataset used for the evauation of the model in unseen disease is available at [COVIDx](https://www.kaggle.com/datasets/andyczhao/covidx-cxr2).
